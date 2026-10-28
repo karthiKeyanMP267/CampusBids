@@ -29,7 +29,7 @@ import AIAssistantDrawer from '../components/ai/AIAssistantDrawer';
 
 export default function AuctionDetailPage() {
   const { id } = useParams();
-  const { user, isAuthenticated, isConfigured } = useAuth();
+  const { user, profile, isAuthenticated, isConfigured } = useAuth();
 
   const [auction, setAuction] = useState(null);
   const [bids, setBids] = useState([]);
@@ -152,17 +152,16 @@ export default function AuctionDetailPage() {
           if (payload?.new) {
             setBids((prev) => {
               if (prev.some((b) => b.id === payload.new.id)) return prev;
+              const isMe = payload.new.bidder_id === user?.id;
               const optimisticBid = {
                 ...payload.new,
                 bidder: {
-                  display_name:
-                    payload.new.bidder_id === user?.id
-                      ? profile?.display_name || 'You'
-                      : 'Student Bidder',
-                  college:
-                    payload.new.bidder_id === user?.id
-                      ? profile?.college || 'Campus'
-                      : 'Campus',
+                  display_name: isMe
+                    ? profile?.display_name || user?.user_metadata?.display_name || 'You'
+                    : 'Student Bidder',
+                  college: isMe
+                    ? profile?.college || user?.user_metadata?.college || 'Campus'
+                    : 'Campus',
                 },
               };
               return [optimisticBid, ...prev];
