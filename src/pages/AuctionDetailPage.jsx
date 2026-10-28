@@ -98,6 +98,24 @@ export default function AuctionDetailPage() {
     setLoading(false);
   }
 
+  // Dedicated helper to refresh bids list with full profile joins
+  async function refreshBids() {
+    if (!supabase || !id) return;
+    try {
+      const { data: bidsData } = await supabase
+        .from('bids')
+        .select('*, bidder:profiles!bidder_id(display_name, college, avatar_url)')
+        .eq('auction_id', id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (bidsData) {
+        setBids(bidsData);
+      }
+    } catch (e) {
+      console.warn('Failed to refresh bids list:', e);
+    }
+  }
+
   useEffect(() => {
     loadAuctionData();
 
@@ -117,6 +135,8 @@ export default function AuctionDetailPage() {
         },
         (payload) => {
           setAuction((prev) => ({ ...prev, ...payload.new }));
+          // Synchronize bids whenever auction current_bid or bid_count updates
+          refreshBids();
         }
       )
       .on(
@@ -127,17 +147,29 @@ export default function AuctionDetailPage() {
           table: 'bids',
           filter: `auction_id=eq.${id}`,
         },
-        async (payload) => {
-          // Fetch new bid with bidder profile
-          const { data: newBid } = await supabase
-            .from('bids')
-            .select('*, bidder:profiles!bidder_id(display_name, college, avatar_url)')
-            .eq('id', payload.new.id)
-            .single();
-
-          if (newBid) {
-            setBids((prev) => [newBid, ...prev.filter((b) => b.id !== newBid.id)]);
+        (payload) => {
+          // 1. Instant optimistic update for zero visual latency
+          if (payload?.new) {
+            setBids((prev) => {
+              if (prev.some((b) => b.id === payload.new.id)) return prev;
+              const optimisticBid = {
+                ...payload.new,
+                bidder: {
+                  display_name:
+                    payload.new.bidder_id === user?.id
+                      ? profile?.display_name || 'You'
+                      : 'Student Bidder',
+                  college:
+                    payload.new.bidder_id === user?.id
+                      ? profile?.college || 'Campus'
+                      : 'Campus',
+                },
+              };
+              return [optimisticBid, ...prev];
+            });
           }
+          // 2. Fetch full profile joins from database
+          refreshBids();
         }
       )
       .on(
@@ -215,12 +247,19 @@ export default function AuctionDetailPage() {
         if (!result.success) {
           setBidError(result.error);
         } else {
-          setBidSuccess(
-            `Bid of ${formatINR(amount)} placed successfully!${
-              result.anti_snipe ? ' ⏰ Anti-snipe: Auction extended by 60s!' : ''
-            }`
-          );
-          setBidAmount(String(amount + auction.min_increment));
+          if (result.current_bidder_id && result.current_bidder_id !== user.id) {
+            setBidSuccess(
+              `Bid of ${formatINR(amount)} placed, but an automatic proxy bid immediately countered at ${formatINR(result.current_highest_bid)}!`
+            );
+            setBidAmount(String((result.current_highest_bid || amount) + (auction.min_increment || 10)));
+          } else {
+            setBidSuccess(
+              `Bid of ${formatINR(amount)} placed successfully!${
+                result.anti_snipe ? ' ⏰ Anti-snipe: Auction extended by 60s!' : ''
+              }`
+            );
+            setBidAmount(String(amount + (auction.min_increment || 10)));
+          }
           // Refresh state immediately
           await loadAuctionData();
         }
