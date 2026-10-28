@@ -15,6 +15,7 @@ import MarkdownRenderer from '../common/MarkdownRenderer';
 import { askGroqAssistant, hasGroqApiKey } from '../../lib/groqClient';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
+import { SAMPLE_AUCTIONS } from '../../lib/constants';
 
 export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] }) {
   const { user } = useAuth();
@@ -22,10 +23,45 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [activeListings, setActiveListings] = useState([]);
   const messagesEndRef = useRef(null);
 
   const dealAnalysis = calculateDealScore(auction);
   const isGroqActive = hasGroqApiKey();
+
+  // Load all active marketplace products for grounded AI catalog matching
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadMarketplaceListings() {
+      if (supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('auctions')
+            .select('id, title, category, condition, starting_price, current_bid, min_increment, status, description, closing_at, images')
+            .eq('status', 'active')
+            .order('created_at', { ascending: false })
+            .limit(30);
+
+          if (!error && data && data.length > 0 && isMounted) {
+            setActiveListings(data);
+            return;
+          }
+        } catch (err) {
+          console.warn('Could not fetch active listings for AI context:', err);
+        }
+      }
+      if (isMounted) {
+        setActiveListings(SAMPLE_AUCTIONS);
+      }
+    }
+
+    loadMarketplaceListings();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Load chat history from Supabase database (not localStorage)
   useEffect(() => {
@@ -208,6 +244,63 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
       };
     }
 
+    // 5. Product search & recommendations query (strictly grounded to listed marketplace items)
+    const productKeywords = [
+      'product', 'item', 'laptop', 'phone', 'book', 'textbook', 'cycle', 'bicycle',
+      'electronics', 'furniture', 'recommend', 'show me', 'what else', 'other',
+      'find', 'search', 'listed', 'auction', 'buy', 'looking for', 'cheap', 'budget',
+    ];
+    const isSearchingProducts = productKeywords.some((kw) => q.includes(kw));
+
+    if (isSearchingProducts) {
+      const searchTerms = q
+        .replace(/[?.,!]/g, '')
+        .split(/\s+/)
+        .filter((w) => w.length > 2 && !['what', 'have', 'show', 'tell', 'about', 'this', 'that', 'with', 'from', 'some', 'else', 'other', 'items', 'products'].includes(w));
+
+      const matches = activeListings.filter((item) => {
+        if (!item) return false;
+        const title = (item.title || '').toLowerCase();
+        const cat = (item.category || '').toLowerCase();
+        const desc = (item.description || '').toLowerCase();
+        return searchTerms.some((term) => title.includes(term) || cat.includes(term) || desc.includes(term));
+      });
+
+      if (matches.length > 0) {
+        return {
+          text: `### Matching Products on CampusBid\n\n` +
+            `Here are active products listed for bidding on CampusBid that match your request:\n\n` +
+            matches.slice(0, 4).map((p) => {
+              const price = p.current_bid || p.starting_price;
+              const cond = (p.condition || 'good').replace('_', ' ');
+              return `• **[${p.title}](/auction/${p.id})**\n` +
+                     `  - **Current Price**: ${formatINR(price)} (Starts at ${formatINR(p.starting_price)})\n` +
+                     `  - **Category**: ${p.category} • **Condition**: ${cond}\n` +
+                     `  - **Description**: ${p.description ? p.description.slice(0, 110) + '...' : 'Verified campus item'}\n` +
+                     `  - [View Auction Listing](/auction/${p.id})\n`;
+            }).join('\n') +
+            `\n> **Note:** Only showing products currently listed on CampusBid. No external or random items are shown.`,
+          isFallback: true,
+        };
+      }
+
+      // No match found -> strictly inform user and show what IS available
+      const otherAvailable = activeListings
+        .filter((item) => item.id !== auction?.id)
+        .slice(0, 3)
+        .map((p) => `• **[${p.title}](/auction/${p.id})** — ${formatINR(p.current_bid || p.starting_price)} (${p.category})`)
+        .join('\n');
+
+      return {
+        text: `### No Matching Products Found on CampusBid\n\n` +
+          `There are currently **no products matching "${query}"** listed on CampusBid.\n\n` +
+          `*Note: As a strict rule, I do not pull products from Google or external stores — only verified campus listings.*\n\n` +
+          (otherAvailable ? `**Other Active Products Currently Listed for Bidding:**\n${otherAvailable}\n\n` : '') +
+          `You can save a search on the **[Browse Page](/browse)** to receive real-time notifications when a matching item is listed!`,
+        isFallback: true,
+      };
+    }
+
     // General answer
     return {
       text: `### Listing Summary for ${auction.title}\n\n` +
@@ -215,7 +308,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
         `• **Condition**: ${auction.condition?.replace('_', ' ')}\n` +
         `• **Current Price**: ${formatINR(auction.current_bid || auction.starting_price)}\n` +
         `• **Seller**: ${auction.seller?.display_name || 'Campus Member'} (${auction.seller?.college || 'Campus'})\n\n` +
-        `Ask me anything specific like: *"What should I check before buying?"* or *"Summarize bidding history"*!`,
+        `Ask me anything specific like: *"Show me other electronics on sale"*, *"What should I check before buying?"*, or *"Summarize bidding history"*!`,
       isFallback: true,
     };
   }
@@ -249,13 +342,14 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
       let isFallback = false;
 
       if (isGroqActive) {
-        // Direct call to Groq AI inference
+        // Direct call to Groq AI inference with active listings catalog
         const groqResponse = await askGroqAssistant({
           query: text,
           conversationHistory: messages,
           auction,
           bids,
           dealScore: dealAnalysis,
+          listedProducts: activeListings,
         });
         responseText = groqResponse.text;
       } else {

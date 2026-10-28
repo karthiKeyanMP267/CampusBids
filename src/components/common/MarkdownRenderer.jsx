@@ -339,14 +339,22 @@ function renderInline(text) {
     // Link [text](url)
     const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
     if (linkMatch) {
+      const url = linkMatch[2];
+      const isAuction = url.startsWith('/auction/') || url.includes('/auction/');
+      const isInternal = url.startsWith('/') || url.startsWith('#');
       return (
         <a
           key={index}
-          href={linkMatch[2]}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-purple-600 hover:text-purple-700 underline underline-offset-2 font-medium"
+          href={url}
+          target={isInternal ? undefined : '_blank'}
+          rel={isInternal ? undefined : 'noopener noreferrer'}
+          className={
+            isAuction
+              ? 'inline-flex items-center gap-1 font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 px-2 py-0.5 rounded-lg transition-colors no-underline text-xs my-0.5 border border-purple-200'
+              : 'text-purple-600 hover:text-purple-700 underline underline-offset-2 font-medium'
+          }
         >
+          {isAuction && <span aria-hidden="true">🏷️</span>}
           {linkMatch[1]}
         </a>
       );

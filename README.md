@@ -23,7 +23,9 @@
 - **Secure Server-Side Configuration**: API keys are securely loaded from `VITE_GROQ_API_KEY` in `.env.local` without exposing credentials or configuration controls to end-users.
 - **Persistent Chat History**: AI discussions are saved in PostgreSQL (`public.ai_chat_messages`) scoped to each student and auction listing.
 - **Full GFM Markdown & Table Rendering**: AI responses render with formatted Markdown tables, headings, checklists (`- [ ]`), strikethrough, and blockquotes.
-- **Listing Grounding**: Provides listing risk assessments, tailored physical pre-inspection checklists for campus meetups, and bidding history summaries without hallucinating missing data.
+- **Strict Catalog-Grounded Product Matching**: The assistant dynamically ingests active CampusBid listings and matches student queries directly to listed items with title, current price, condition, category, and direct route badges (`[View Listing](/auction/:id)`).
+- **Zero-External Hallucination Policy**: Strictly forbidden by system prompt and guardrails from referencing Google, Amazon, Flipkart, or outside products. If no item matches on CampusBid, it explicitly notifies the user and suggests active listings instead.
+- **Listing Grounding & Risk Assessment**: Provides listing risk assessments, tailored physical pre-inspection checklists for campus meetups, and bidding history summaries without hallucinating missing data.
 - **Zero-Hallucination Heuristic Fallback**: Includes a rule-based analyzer when working offline or without an active Groq API key.
 
 ### 4. Transparent Deal Score (0–100)

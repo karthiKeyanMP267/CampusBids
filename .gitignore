@@ -27,3 +27,5 @@ supabase-schema.sql
 seed-demo.sql
 .env.local
 session.md
+supabase/.temp/
+.temp/
