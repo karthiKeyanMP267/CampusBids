@@ -37,10 +37,17 @@ export default function HomePage() {
 
     try {
       setLoading(true);
+      try {
+        await supabase.rpc('close_expired_auctions');
+      } catch (e) {
+        console.warn('Auto-close expired auctions note:', e.message);
+      }
+
       const { data, error } = await supabase
         .from('auctions')
         .select('*, seller:profiles!seller_id(display_name, college, avatar_url)')
         .eq('status', 'active')
+        .gt('closing_at', new Date().toISOString())
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -92,21 +99,37 @@ export default function HomePage() {
     if (!user || !supabase) return;
     try {
       setSeeding(true);
-      const itemsToSeed = SAMPLE_AUCTIONS.slice(0, 4).map((item) => ({
+      const now = Date.now();
+      const itemsToSeed = SAMPLE_AUCTIONS.map((item, idx) => ({
         seller_id: user.id,
         title: item.title,
         description: item.description,
         category: item.category,
-        condition: item.condition === 'like_new' ? 'like_new' : 'good',
+        condition: item.condition === 'like_new' ? 'like_new' : item.condition === 'fair' ? 'fair' : 'good',
         images: item.images,
         starting_price: item.starting_price,
         min_increment: item.min_increment,
-        closing_at: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
+        // Stagger closing times so "Closing Soon" has items (20m, 45m, 2h, 5h, etc.)
+        closing_at: new Date(now + [20, 45, 120, 300, 720, 1440, 2880, 4320][idx % 8] * 60 * 1000).toISOString(),
         status: 'active',
       }));
 
-      const { error } = await supabase.from('auctions').insert(itemsToSeed);
+      const { data, error } = await supabase.from('auctions').insert(itemsToSeed).select();
       if (error) throw error;
+
+      if (data) {
+        const imgRows = data.flatMap((auc) =>
+          (auc.images || []).map((url, i) => ({
+            auction_id: auc.id,
+            image_url: url,
+            display_order: i,
+          }))
+        );
+        if (imgRows.length) {
+          await supabase.from('auction_images').insert(imgRows);
+        }
+      }
+
       await loadRealAuctions();
     } catch (e) {
       console.error('Failed to seed demo data:', e);
@@ -347,16 +370,28 @@ export default function HomePage() {
                 <Plus className="h-4 w-4" />
                 Post First Auction
               </Link>
-              {user && (
+              {user ? (
                 <button
                   type="button"
                   onClick={handleSeedDemoData}
                   disabled={seeding}
-                  className="inline-flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-4 py-2.5 text-sm font-medium text-surface-700 shadow-sm hover:bg-surface-50 transition-colors disabled:opacity-50"
+                  className="inline-flex items-center gap-2 rounded-xl border border-brand-200 bg-brand-50 px-4 py-2.5 text-sm font-semibold text-brand-700 shadow-sm hover:bg-brand-100 transition-colors disabled:opacity-50"
                 >
-                  {seeding && <Loader2 className="h-4 w-4 animate-spin text-brand-600" />}
-                  Seed 4 Demo Listings into DB
+                  {seeding ? (
+                    <Loader2 className="h-4 w-4 animate-spin text-brand-600" />
+                  ) : (
+                    <Sparkles className="h-4 w-4 text-brand-600" />
+                  )}
+                  Seed 8 Demo Listings into DB
                 </button>
+              ) : (
+                <Link
+                  to="/register"
+                  className="inline-flex items-center gap-2 rounded-xl border border-surface-200 bg-white px-4 py-2.5 text-sm font-medium text-surface-700 shadow-sm hover:bg-surface-50 transition-colors"
+                >
+                  <Sparkles className="h-4 w-4 text-brand-600" />
+                  Sign In to Seed 8 Demo Listings
+                </Link>
               )}
             </div>
           </div>

@@ -9,6 +9,7 @@ import {
   Menu,
   X,
   Gavel,
+  Package,
   Bell,
   Shield,
 } from 'lucide-react';
@@ -70,6 +71,23 @@ export default function Navbar() {
               Browse
             </Link>
 
+            {isAuthenticated && (
+              <>
+                <Link
+                  to="/my-listings"
+                  className="px-3 py-2 text-sm font-medium text-surface-600 hover:text-brand-600 transition-colors"
+                >
+                  My Listings
+                </Link>
+                <Link
+                  to="/my-bids"
+                  className="px-3 py-2 text-sm font-medium text-surface-600 hover:text-brand-600 transition-colors"
+                >
+                  My Bids
+                </Link>
+              </>
+            )}
+
             <Link
               to="/create"
               className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-xs transition-all hover:bg-brand-700 hover:shadow-sm active:scale-[0.97]"
@@ -100,13 +118,29 @@ export default function Navbar() {
                       <p className="text-[11px] text-brand-600 font-medium mt-0.5">{college}</p>
                     </div>
 
-                    <div className="pt-1">
+                    <div className="pt-1 space-y-0.5">
+                      <Link
+                        to="/my-listings"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
+                      >
+                        <Package className="h-3.5 w-3.5 text-surface-400" />
+                        My Listings (Seller)
+                      </Link>
+                      <Link
+                        to="/my-bids"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
+                      >
+                        <Gavel className="h-3.5 w-3.5 text-surface-400" />
+                        My Bids (Buyer)
+                      </Link>
                       <Link
                         to="/create"
                         onClick={() => setUserMenuOpen(false)}
                         className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
                       >
-                        <Plus className="h-3.5 w-3.5" />
+                        <Plus className="h-3.5 w-3.5 text-surface-400" />
                         Create Listing
                       </Link>
                       <button
@@ -191,6 +225,27 @@ export default function Navbar() {
               <Plus className="h-4 w-4" />
               Sell Item
             </Link>
+
+            {isAuthenticated && (
+              <div className="grid grid-cols-2 gap-2">
+                <Link
+                  to="/my-listings"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2 text-xs font-semibold text-surface-700"
+                >
+                  <Package className="h-3.5 w-3.5" />
+                  My Listings
+                </Link>
+                <Link
+                  to="/my-bids"
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center justify-center gap-1.5 rounded-xl border border-surface-200 bg-surface-50 px-3 py-2 text-xs font-semibold text-surface-700"
+                >
+                  <Gavel className="h-3.5 w-3.5" />
+                  My Bids
+                </Link>
+              </div>
+            )}
 
             {isAuthenticated ? (
               <div className="pt-2 border-t border-surface-100 flex items-center justify-between">

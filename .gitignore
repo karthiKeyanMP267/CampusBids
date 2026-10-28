@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 supabase-schema.sql
+seed-demo.sql
+.env.local
+session.md

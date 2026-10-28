@@ -5,16 +5,13 @@ import {
   SlidersHorizontal,
   X,
   ArrowUpDown,
-  Clock,
   IndianRupee,
-  Filter,
-  Loader2,
   PackageOpen,
   Plus,
 } from 'lucide-react';
 import AuctionCard from '../components/auction/AuctionCard';
 import CategoryBar from '../components/ui/CategoryBar';
-import { CONDITIONS, CATEGORIES, SAMPLE_AUCTIONS } from '../lib/constants';
+import { CONDITIONS, SAMPLE_AUCTIONS } from '../lib/constants';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { cn } from '../lib/utils';
 
@@ -53,10 +50,18 @@ export default function BrowsePage() {
     setLoading(true);
     setError(null);
     try {
+      // Trigger opportunistic closing of expired auctions
+      try {
+        await supabase.rpc('close_expired_auctions');
+      } catch (e) {
+        console.warn('Auto-close expired auctions note:', e.message);
+      }
+
       let query = supabase
         .from('auctions')
         .select('*, seller:profiles!seller_id(display_name, college, avatar_url)')
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .gt('closing_at', new Date().toISOString());
 
       if (selectedCategory) {
         query = query.eq('category', selectedCategory);

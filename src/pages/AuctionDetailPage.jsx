@@ -13,6 +13,7 @@ import {
   XCircle,
   Loader2,
   Sparkles,
+  Trophy,
 } from 'lucide-react';
 import { useCountdown } from '../hooks/useCountdown';
 import { useAuth } from '../context/AuthContext';
@@ -50,6 +51,10 @@ export default function AuctionDetailPage() {
         }
 
         if (data) {
+          if (data.status === 'active' && new Date(data.closing_at).getTime() <= Date.now()) {
+            data.status = data.bid_count > 0 ? 'pending_approval' : 'unsold';
+            supabase.rpc('close_expired_auctions').catch(() => {});
+          }
           setAuction(data);
 
           // Load bids
@@ -171,6 +176,11 @@ export default function AuctionDetailPage() {
     setBidError('');
     setBidSuccess('');
 
+    if (isWinningBidder) {
+      setBidError('You are already the highest bidder! You can only place another bid if someone outbids you.');
+      return;
+    }
+
     const amount = Number(bidAmount);
     if (!amount || amount < minBid) {
       setBidError(`Minimum bid is ${formatINR(minBid)}`);
@@ -219,6 +229,7 @@ export default function AuctionDetailPage() {
         setAuction((prev) => ({
           ...prev,
           current_bid: amount,
+          current_bidder_id: user?.id,
           bid_count: prev.bid_count + 1,
         }));
         setBidSuccess(`Demo bid of ${formatINR(amount)} placed!`);
@@ -445,82 +456,100 @@ export default function AuctionDetailPage() {
               <span>Min increment: +{formatINR(auction.min_increment)}</span>
             </div>
 
-            {/* Bid Placement Form */}
+            {/* Bid Placement Form / Leading Bidder Banner */}
             {auction.status === 'active' && !isOwner && (
-              <form onSubmit={handlePlaceBid} className="mt-5 space-y-3">
-                {bidError && (
-                  <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-start gap-2">
-                    <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
-                    <span>{bidError}</span>
+              isWinningBidder ? (
+                <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50/70 p-5 shadow-xs animate-fade-in text-center">
+                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 mb-3">
+                    <Trophy className="h-6 w-6" />
                   </div>
-                )}
-
-                {bidSuccess && (
-                  <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 flex items-start gap-2">
-                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
-                    <span>{bidSuccess}</span>
-                  </div>
-                )}
-
-                <div className="relative">
-                  <IndianRupee className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
-                  <input
-                    type="number"
-                    min={minBid}
-                    step={auction.min_increment}
-                    value={bidAmount}
-                    onChange={(e) => setBidAmount(e.target.value)}
-                    placeholder={`Min ₹${minBid}`}
-                    disabled={bidLoading}
-                    className="w-full rounded-xl border border-surface-200 bg-surface-50 py-3 pl-10 pr-4 text-base font-semibold outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 text-surface-900"
-                  />
-                </div>
-
-                {/* Quick increment buttons */}
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    minBid,
-                    minBid + auction.min_increment,
-                    minBid + auction.min_increment * 2,
-                  ].map((val) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setBidAmount(String(val))}
-                      className="rounded-lg border border-surface-200 bg-surface-50 py-1.5 text-xs font-semibold text-surface-700 hover:bg-surface-100 transition-colors"
-                    >
-                      {formatINR(val)}
-                    </button>
-                  ))}
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={bidLoading}
-                  className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 active:scale-[0.98] transition-all disabled:opacity-50"
-                >
-                  {bidLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <>
-                      <Gavel className="h-4 w-4" />
-                      Place Bid ({formatINR(Number(bidAmount) || minBid)})
-                    </>
-                  )}
-                </button>
-
-                {!isAuthenticated && (
-                  <p className="mt-2 text-xs text-center text-surface-500">
-                    <Link
-                      to="/login"
-                      className="text-brand-600 font-medium hover:text-brand-700 underline"
-                    >
-                      Sign in with your campus account
-                    </Link>{' '}
-                    to bid
+                  <h4 className="text-sm font-bold text-emerald-950">
+                    You Are Currently the Highest Bidder!
+                  </h4>
+                  <p className="mt-1.5 text-xs text-emerald-800 leading-relaxed max-w-sm mx-auto">
+                    Your bid of <strong className="font-bold text-emerald-950">{formatINR(auction.current_bid || auction.starting_price)}</strong> is currently leading. You can only place another bid if someone outbids you.
                   </p>
-                )}
-              </form>
+                  <div className="mt-4 flex items-center justify-center gap-2 text-[11px] font-semibold text-emerald-800 bg-white/90 border border-emerald-200 py-2 px-3 rounded-xl shadow-2xs">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                    Live monitoring active — will unlock if outbid
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handlePlaceBid} className="mt-5 space-y-3">
+                  {bidError && (
+                    <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-xs text-red-700 flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
+                      <span>{bidError}</span>
+                    </div>
+                  )}
+
+                  {bidSuccess && (
+                    <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-xs text-emerald-800 flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                      <span>{bidSuccess}</span>
+                    </div>
+                  )}
+
+                  <div className="relative">
+                    <IndianRupee className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-surface-400" />
+                    <input
+                      type="number"
+                      min={minBid}
+                      step={auction.min_increment}
+                      value={bidAmount}
+                      onChange={(e) => setBidAmount(e.target.value)}
+                      placeholder={`Min ₹${minBid}`}
+                      disabled={bidLoading}
+                      className="w-full rounded-xl border border-surface-200 bg-surface-50 py-3 pl-10 pr-4 text-base font-semibold outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 text-surface-900"
+                    />
+                  </div>
+
+                  {/* Quick increment buttons */}
+                  <div className="grid grid-cols-3 gap-2">
+                    {[
+                      minBid,
+                      minBid + auction.min_increment,
+                      minBid + auction.min_increment * 2,
+                    ].map((val) => (
+                      <button
+                        key={val}
+                        type="button"
+                        onClick={() => setBidAmount(String(val))}
+                        className="rounded-lg border border-surface-200 bg-surface-50 py-1.5 text-xs font-semibold text-surface-700 hover:bg-surface-100 transition-colors"
+                      >
+                        {formatINR(val)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={bidLoading}
+                    className="w-full flex items-center justify-center gap-2 rounded-xl bg-brand-600 py-3 text-sm font-semibold text-white shadow-sm hover:bg-brand-700 active:scale-[0.98] transition-all disabled:opacity-50"
+                  >
+                    {bidLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <>
+                        <Gavel className="h-4 w-4" />
+                        Place Bid ({formatINR(Number(bidAmount) || minBid)})
+                      </>
+                    )}
+                  </button>
+
+                  {!isAuthenticated && (
+                    <p className="mt-2 text-xs text-center text-surface-500">
+                      <Link
+                        to="/login"
+                        className="text-brand-600 font-medium hover:text-brand-700 underline"
+                      >
+                        Sign in with your campus account
+                      </Link>{' '}
+                      to bid
+                    </p>
+                  )}
+                </form>
+              )
             )}
 
             {isOwner && auction.status === 'active' && (

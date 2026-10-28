@@ -8,6 +8,8 @@ import AuctionDetailPage from './pages/AuctionDetailPage';
 import CreateListingPage from './pages/CreateListingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
+import MyListingsPage from './pages/MyListingsPage';
+import MyBidsPage from './pages/MyBidsPage';
 
 export default function App() {
   return (
@@ -21,6 +23,8 @@ export default function App() {
               <Route path="/browse" element={<BrowsePage />} />
               <Route path="/auction/:id" element={<AuctionDetailPage />} />
               <Route path="/create" element={<CreateListingPage />} />
+              <Route path="/my-listings" element={<MyListingsPage />} />
+              <Route path="/my-bids" element={<MyBidsPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/register" element={<RegisterPage />} />
               <Route path="*" element={<NotFoundPage />} />
