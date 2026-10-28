@@ -1,16 +1,20 @@
 /**
  * Groq AI Client Integration for CampusBid
- * Connects directly to Groq's high-speed inference engine using Llama 3 models.
+ * Connects directly to Groq's high-speed inference engine using verified free models.
  */
 
 const GROQ_STORAGE_KEY = 'campusbids_groq_api_key';
 const GROQ_MODEL_KEY = 'campusbids_groq_model';
 
+// Verified free models available on Groq Free Tier
 export const GROQ_MODELS = [
-  { id: 'llama-3.3-70b-versatile', name: 'Llama 3.3 70B Versatile', badge: 'Recommended' },
-  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B Instant', badge: 'Ultra-Fast' },
-  { id: 'mixtral-8x7b-32768', name: 'Mixtral 8x7B 32k', badge: 'Long Context' },
+  { id: 'openai/gpt-oss-120b', name: 'GPT-OSS 120B', badge: 'Recommended • 120B Free' },
+  { id: 'openai/gpt-oss-20b', name: 'GPT-OSS 20B', badge: 'Ultra-Fast • 20B Free' },
+  { id: 'qwen/qwen3.8-27b', name: 'Qwen 3.8 27B', badge: '27B Free Tier' },
+  { id: 'llama-3.1-8b-instant', name: 'Llama 3.1 8B', badge: 'Free Tier' },
 ];
+
+export const DEFAULT_FREE_MODEL = 'openai/gpt-oss-120b';
 
 export function getStoredGroqApiKey() {
   if (typeof window === 'undefined') return '';
@@ -31,8 +35,14 @@ export function setStoredGroqApiKey(key) {
 }
 
 export function getSelectedGroqModel() {
-  if (typeof window === 'undefined') return 'llama-3.3-70b-versatile';
-  return localStorage.getItem(GROQ_MODEL_KEY) || 'llama-3.3-70b-versatile';
+  if (typeof window === 'undefined') return DEFAULT_FREE_MODEL;
+  const stored = localStorage.getItem(GROQ_MODEL_KEY);
+  // Migrate away from deprecated/inaccessible models
+  if (!stored || stored.includes('llama-3.3') || stored.includes('versatile')) {
+    localStorage.setItem(GROQ_MODEL_KEY, DEFAULT_FREE_MODEL);
+    return DEFAULT_FREE_MODEL;
+  }
+  return stored;
 }
 
 export function setSelectedGroqModel(modelId) {
@@ -87,7 +97,7 @@ SAFETY & MARKETPLACE RULES:
 }
 
 /**
- * Executes chat completion request to Groq API
+ * Executes chat completion request to Groq API with automatic fallback
  */
 export async function askGroqAssistant({
   query,
@@ -103,10 +113,9 @@ export async function askGroqAssistant({
     throw new Error('Groq API Key is missing. Please provide a key in settings or set VITE_GROQ_API_KEY.');
   }
 
-  const selectedModel = model || getSelectedGroqModel();
+  let selectedModel = model || getSelectedGroqModel();
   const systemPrompt = buildSystemPrompt(auction, bids, dealScore);
 
-  // Format messages for OpenAI-compatible endpoint
   const formattedMessages = [
     { role: 'system', content: systemPrompt },
     ...conversationHistory.slice(-6).map((m) => ({
@@ -116,20 +125,39 @@ export async function askGroqAssistant({
     { role: 'user', content: query },
   ];
 
-  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${key}`,
-    },
-    body: JSON.stringify({
-      model: selectedModel,
-      messages: formattedMessages,
-      temperature: 0.5,
-      max_tokens: 1024,
-      top_p: 1,
-    }),
-  });
+  async function executeRequest(modelToUse) {
+    return await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${key}`,
+      },
+      body: JSON.stringify({
+        model: modelToUse,
+        messages: formattedMessages,
+        temperature: 0.5,
+        max_tokens: 1024,
+        top_p: 1,
+      }),
+    });
+  }
+
+  let response = await executeRequest(selectedModel);
+
+  // If selected model is not accessible on user's free tier, auto-fallback to DEFAULT_FREE_MODEL
+  if (!response.ok && response.status === 404 && selectedModel !== DEFAULT_FREE_MODEL) {
+    console.warn(`Model ${selectedModel} not accessible. Auto-falling back to ${DEFAULT_FREE_MODEL}`);
+    selectedModel = DEFAULT_FREE_MODEL;
+    setSelectedGroqModel(DEFAULT_FREE_MODEL);
+    response = await executeRequest(DEFAULT_FREE_MODEL);
+  }
+
+  // If still fails, try secondary free model
+  if (!response.ok && response.status === 404 && selectedModel !== 'openai/gpt-oss-20b') {
+    selectedModel = 'openai/gpt-oss-20b';
+    setSelectedGroqModel('openai/gpt-oss-20b');
+    response = await executeRequest('openai/gpt-oss-20b');
+  }
 
   if (!response.ok) {
     let errorDetail = 'Failed to connect to Groq AI';
@@ -137,7 +165,6 @@ export async function askGroqAssistant({
       const errorJson = await response.json();
       errorDetail = errorJson?.error?.message || errorDetail;
     } catch {
-      // Fallback to response status text
       errorDetail = `${response.status} ${response.statusText}`;
     }
     throw new Error(errorDetail);
