@@ -7,16 +7,17 @@ import {
   ShieldCheck,
   Cpu,
   AlertCircle,
+  RotateCcw,
 } from 'lucide-react';
 import { formatINR, cn } from '../../lib/utils';
 import { calculateDealScore } from '../../lib/dealScore';
 import MarkdownRenderer from '../common/MarkdownRenderer';
-import {
-  askGroqAssistant,
-  hasGroqApiKey,
-} from '../../lib/groqClient';
+import { askGroqAssistant, hasGroqApiKey } from '../../lib/groqClient';
+import { useAuth } from '../../context/AuthContext';
+import { supabase } from '../../lib/supabaseClient';
 
 export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] }) {
+  const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -26,29 +27,96 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
   const dealAnalysis = calculateDealScore(auction);
   const isGroqActive = hasGroqApiKey();
 
-  // Initialize with helpful welcome message when opened
+  // Load chat history from Supabase database (not localStorage)
   useEffect(() => {
-    if (isOpen && messages.length === 0 && auction) {
-      setMessages([
-        {
-          id: 'welcome',
-          sender: 'assistant',
-          text: `Hello! I'm your **CampusBid AI Assistant**. I can inspect "${auction.title}", uncover item risks, summarize the bidding dynamics, or generate a customized pre-inspection checklist for campus handover.`,
-          isFallback: !isGroqActive,
-          suggestions: [
-            'What should I inspect before buying this item?',
-            'What risks should I consider before bidding?',
-            'Summarize this auction\'s bidding history',
-            'Is the current price reasonable based on condition?',
-          ],
-        },
-      ]);
+    let isMounted = true;
+
+    async function loadChatHistory() {
+      if (!isOpen || !auction?.id) return;
+
+      if (user && supabase) {
+        try {
+          const { data, error } = await supabase
+            .from('ai_chat_messages')
+            .select('*')
+            .eq('auction_id', auction.id)
+            .eq('user_id', user.id)
+            .order('created_at', { ascending: true });
+
+          if (!error && data && data.length > 0 && isMounted) {
+            setMessages(
+              data.map((m) => ({
+                id: m.id,
+                sender: m.sender,
+                text: m.text,
+                isFallback: m.is_fallback,
+                isRealAI: !m.is_fallback,
+              }))
+            );
+            return;
+          }
+        } catch {
+          // Table not yet migrated; fall back to welcome state
+        }
+      }
+
+      if (isMounted) {
+        setMessages([
+          {
+            id: 'welcome',
+            sender: 'assistant',
+            text: `Hello! I'm your **CampusBid AI Assistant**. I can inspect "${auction.title}", uncover item risks, summarize the bidding dynamics, or generate a customized pre-inspection checklist for campus handover.`,
+            isFallback: !isGroqActive,
+            suggestions: [
+              'What should I inspect before buying this item?',
+              'What risks should I consider before bidding?',
+              'Summarize this auction\'s bidding history',
+              'Is the current price reasonable based on condition?',
+            ],
+          },
+        ]);
+      }
     }
-  }, [isOpen, auction, isGroqActive]);
+
+    loadChatHistory();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isOpen, auction?.id, user?.id, isGroqActive]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
+
+  // Clear chat history from database and reset conversation
+  async function handleClearChat() {
+    if (user && supabase && auction?.id) {
+      try {
+        await supabase
+          .from('ai_chat_messages')
+          .delete()
+          .eq('auction_id', auction.id)
+          .eq('user_id', user.id);
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        sender: 'assistant',
+        text: `Chat history cleared. How else can I help you evaluate "${auction.title}"?`,
+        isFallback: !isGroqActive,
+        suggestions: [
+          'What should I inspect before buying this item?',
+          'What risks should I consider before bidding?',
+          'Summarize this auction\'s bidding history',
+        ],
+      },
+    ]);
+  }
 
   // Deterministic local analyzer (used as immediate fallback if AI service is offline)
   function analyzeAuctionLocally(query) {
@@ -162,7 +230,24 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
     setLoading(true);
     setErrorMsg('');
 
+    // Persist user message to Supabase database (not localStorage)
+    if (user && supabase && auction?.id) {
+      try {
+        await supabase.from('ai_chat_messages').insert({
+          user_id: user.id,
+          auction_id: auction.id,
+          sender: 'user',
+          text,
+        });
+      } catch {
+        // Non-blocking database write
+      }
+    }
+
     try {
+      let responseText = '';
+      let isFallback = false;
+
       if (isGroqActive) {
         // Direct call to Groq AI inference
         const groqResponse = await askGroqAssistant({
@@ -172,34 +257,40 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
           bids,
           dealScore: dealAnalysis,
         });
-
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
-            sender: 'assistant',
-            text: groqResponse.text,
-            isRealAI: true,
-          },
-        ]);
+        responseText = groqResponse.text;
       } else {
         // Heuristic fallback if AI service key is absent
         await new Promise((res) => setTimeout(res, 300));
-        const response = analyzeAuctionLocally(text);
+        const localResp = analyzeAuctionLocally(text);
+        responseText = localResp.text;
+        isFallback = true;
+      }
 
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: `a-${Date.now()}`,
+      const assistantMsg = {
+        id: `a-${Date.now()}`,
+        sender: 'assistant',
+        text: responseText,
+        isRealAI: !isFallback,
+        isFallback,
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      // Persist assistant response to Supabase database (not localStorage)
+      if (user && supabase && auction?.id) {
+        try {
+          await supabase.from('ai_chat_messages').insert({
+            user_id: user.id,
+            auction_id: auction.id,
             sender: 'assistant',
-            text: response.text,
-            isFallback: true,
-          },
-        ]);
+            text: responseText,
+            is_fallback: isFallback,
+          });
+        } catch {
+          // Non-blocking database write
+        }
       }
     } catch (err) {
       console.error('AI Assistant Error:', err);
-      // Fallback gracefully to local analysis so user never sees a broken screen
       const fallback = analyzeAuctionLocally(text);
       setMessages((prev) => [
         ...prev,
@@ -236,19 +327,31 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-surface-500 truncate max-w-[240px]">
+              <p className="text-[11px] text-surface-500 truncate max-w-[220px]">
                 {auction?.title}
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700 transition-colors"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-1">
+            {messages.length > 1 && (
+              <button
+                type="button"
+                onClick={handleClearChat}
+                title="Clear conversation history"
+                className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700 transition-colors"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700 transition-colors"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {/* Guardrail & Grounding Banner */}

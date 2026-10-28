@@ -31,6 +31,16 @@ export default function Navbar() {
     }
   }
 
+  async function handleSignOut() {
+    setUserMenuOpen(false);
+    setMobileOpen(false);
+    try {
+      await signOut();
+    } finally {
+      navigate('/login');
+    }
+  }
+
   const displayName =
     profile?.display_name || user?.user_metadata?.display_name || user?.email?.split('@')[0] || 'Student';
   const college = profile?.college || 'Campus';
@@ -151,10 +161,7 @@ export default function Navbar() {
                           Create Listing
                         </Link>
                         <button
-                          onClick={() => {
-                            setUserMenuOpen(false);
-                            signOut();
-                          }}
+                          onClick={handleSignOut}
                           className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 text-left transition-colors"
                         >
                           <LogOut className="h-3.5 w-3.5" />
@@ -269,10 +276,7 @@ export default function Navbar() {
                   <p className="text-xs text-surface-400">{college}</p>
                 </div>
                 <button
-                  onClick={() => {
-                    setMobileOpen(false);
-                    signOut();
-                  }}
+                  onClick={handleSignOut}
                   className="flex items-center gap-1.5 rounded-lg text-xs font-semibold text-red-600 hover:bg-red-50 p-2"
                 >
                   <LogOut className="h-4 w-4" />
