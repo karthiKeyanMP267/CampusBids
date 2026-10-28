@@ -1,40 +1,35 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './context/AuthContext';
 import Navbar from './components/layout/Navbar';
 import Footer from './components/layout/Footer';
 import HomePage from './pages/HomePage';
+import BrowsePage from './pages/BrowsePage';
+import AuctionDetailPage from './pages/AuctionDetailPage';
+import CreateListingPage from './pages/CreateListingPage';
+import LoginPage from './pages/LoginPage';
+import RegisterPage from './pages/RegisterPage';
 
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="flex min-h-screen flex-col">
-        <Navbar />
-        <main className="flex-1">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            {/* Placeholder routes — pages will be built in subsequent stages */}
-            <Route path="/browse" element={<HomePage />} />
-            <Route path="/auction/:id" element={<PlaceholderPage title="Auction Detail" />} />
-            <Route path="/create" element={<PlaceholderPage title="Create Listing" />} />
-            <Route path="/login" element={<PlaceholderPage title="Sign In" />} />
-            <Route path="/register" element={<PlaceholderPage title="Register" />} />
-            <Route path="*" element={<NotFoundPage />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
+      <AuthProvider>
+        <div className="flex min-h-screen flex-col bg-surface-50 text-surface-900 antialiased selection:bg-brand-500 selection:text-white">
+          <Navbar />
+          <main className="flex-1">
+            <Routes>
+              <Route path="/" element={<HomePage />} />
+              <Route path="/browse" element={<BrowsePage />} />
+              <Route path="/auction/:id" element={<AuctionDetailPage />} />
+              <Route path="/create" element={<CreateListingPage />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="*" element={<NotFoundPage />} />
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </AuthProvider>
     </BrowserRouter>
-  );
-}
-
-function PlaceholderPage({ title }) {
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-24 text-center animate-fade-in">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-50 text-brand-600 mb-6">
-        <span className="text-2xl font-bold">🚧</span>
-      </div>
-      <h1 className="text-2xl font-bold text-surface-900">{title}</h1>
-      <p className="mt-2 text-surface-500">This page is coming in the next stage.</p>
-    </div>
   );
 }
 

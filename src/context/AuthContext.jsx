@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect } from 'react';
-import { getSupabase, isSupabaseConfigured } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
 
@@ -10,111 +10,145 @@ export function useAuth() {
 }
 
 /**
- * Provides auth state throughout the app.
- * When Supabase is not configured, provides a demo mode with no auth.
+ * Provides persistent authentication and user profile state
  */
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [isConfigured] = useState(isSupabaseConfigured());
+  const isConfigured = isSupabaseConfigured();
+
+  async function fetchProfile(userId) {
+    if (!supabase || !userId) return null;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+      if (!error && data) {
+        setProfile(data);
+        return data;
+      }
+    } catch (e) {
+      console.warn('Could not fetch user profile:', e);
+    }
+    return null;
+  }
 
   useEffect(() => {
-    if (!isConfigured) {
+    if (!isConfigured || !supabase) {
       setLoading(false);
       return;
     }
 
-    let subscription;
+    let isMounted = true;
 
-    async function init() {
-      const supabase = await getSupabase();
-      if (!supabase) { setLoading(false); return; }
-
-      // Get current session
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser(session.user);
-        await fetchProfile(supabase, session.user.id);
-      }
-      setLoading(false);
-
-      // Listen for auth changes
-      const { data: { subscription: sub } } = supabase.auth.onAuthStateChange(
-        async (event, session) => {
+    async function initSession() {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) {
+          console.warn('Supabase getSession error:', error.message);
+        }
+        if (isMounted) {
           if (session?.user) {
             setUser(session.user);
-            await fetchProfile(supabase, session.user.id);
+            await fetchProfile(session.user.id);
           } else {
             setUser(null);
             setProfile(null);
           }
         }
-      );
-      subscription = sub;
+      } catch (err) {
+        console.warn('Auth initialization error:', err);
+      } finally {
+        if (isMounted) setLoading(false);
+      }
     }
 
-    init();
+    initSession();
+
+    // Listen for auth state transitions (sign in, sign out, token refresh)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (session?.user) {
+          setUser(session.user);
+          await fetchProfile(session.user.id);
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
+        setLoading(false);
+      }
+    );
 
     return () => {
+      isMounted = false;
       subscription?.unsubscribe();
     };
   }, [isConfigured]);
 
-  async function fetchProfile(supabase, userId) {
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single();
-    if (data) setProfile(data);
-  }
-
   async function signUp({ email, password, displayName, college }) {
-    const supabase = await getSupabase();
-    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    if (!supabase) return { error: { message: 'Supabase is not configured' } };
 
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
       options: {
-        data: { display_name: displayName },
+        data: {
+          display_name: displayName,
+          college: college || 'Campus',
+        },
       },
     });
 
-    if (!error && data.user) {
-      // Update profile with college
+    if (error) return { data, error };
+
+    if (data?.user) {
+      setUser(data.user);
+      // Ensure profile record is created or updated
       await supabase
         .from('profiles')
-        .update({ college, display_name: displayName })
-        .eq('id', data.user.id);
+        .upsert({
+          id: data.user.id,
+          display_name: displayName,
+          college: college || 'Campus',
+          updated_at: new Date().toISOString(),
+        });
+      await fetchProfile(data.user.id);
     }
 
-    return { data, error };
+    return { data, error: null };
   }
 
   async function signIn({ email, password }) {
-    const supabase = await getSupabase();
-    if (!supabase) return { error: { message: 'Supabase not configured' } };
+    if (!supabase) return { error: { message: 'Supabase is not configured' } };
 
     const { data, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
 
+    if (!error && data?.user) {
+      setUser(data.user);
+      await fetchProfile(data.user.id);
+    }
+
     return { data, error };
   }
 
   async function signOut() {
-    const supabase = await getSupabase();
     if (!supabase) return;
-    await supabase.auth.signOut();
-    setUser(null);
-    setProfile(null);
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setUser(null);
+      setProfile(null);
+    }
   }
 
   async function updateProfile(updates) {
-    const supabase = await getSupabase();
     if (!supabase || !user) return { error: { message: 'Not authenticated' } };
 
     const { data, error } = await supabase
@@ -124,7 +158,9 @@ export function AuthProvider({ children }) {
       .select()
       .single();
 
-    if (data) setProfile(data);
+    if (!error && data) {
+      setProfile(data);
+    }
     return { data, error };
   }
 
@@ -133,11 +169,12 @@ export function AuthProvider({ children }) {
     profile,
     loading,
     isConfigured,
-    isAuthenticated: !!user,
+    isAuthenticated: Boolean(user),
     signUp,
     signIn,
     signOut,
     updateProfile,
+    refreshProfile: () => user && fetchProfile(user.id),
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
