@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import MyListingsPage from './pages/MyListingsPage';
 import MyBidsPage from './pages/MyBidsPage';
+import { ProtectedRoute, GuestRoute } from './components/common/ProtectedRoute';
 
 export default function App() {
   return (
@@ -22,11 +23,46 @@ export default function App() {
               <Route path="/" element={<HomePage />} />
               <Route path="/browse" element={<BrowsePage />} />
               <Route path="/auction/:id" element={<AuctionDetailPage />} />
-              <Route path="/create" element={<CreateListingPage />} />
-              <Route path="/my-listings" element={<MyListingsPage />} />
-              <Route path="/my-bids" element={<MyBidsPage />} />
-              <Route path="/login" element={<LoginPage />} />
-              <Route path="/register" element={<RegisterPage />} />
+              <Route
+                path="/create"
+                element={
+                  <ProtectedRoute>
+                    <CreateListingPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-listings"
+                element={
+                  <ProtectedRoute>
+                    <MyListingsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/my-bids"
+                element={
+                  <ProtectedRoute>
+                    <MyBidsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/login"
+                element={
+                  <GuestRoute>
+                    <LoginPage />
+                  </GuestRoute>
+                }
+              />
+              <Route
+                path="/register"
+                element={
+                  <GuestRoute>
+                    <RegisterPage />
+                  </GuestRoute>
+                }
+              />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
           </main>

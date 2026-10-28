@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Gavel, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const { signIn, isConfigured } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -34,7 +35,8 @@ export default function LoginPage() {
     if (authError) {
       setError(authError.message);
     } else {
-      navigate('/');
+      const destination = location.state?.from?.pathname || '/';
+      navigate(destination, { replace: true });
     }
   }
 
