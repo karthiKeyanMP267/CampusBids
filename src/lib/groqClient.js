@@ -7,7 +7,11 @@ const DEFAULT_MODEL = 'openai/gpt-oss-120b';
 const FALLBACK_MODEL = 'openai/gpt-oss-20b';
 
 export function getGroqApiKey() {
-  return import.meta.env.VITE_GROQ_API_KEY || '';
+  return (
+    import.meta.env.VITE_GROQ_API_KEY ||
+    import.meta.env.GROQ_API_KEY ||
+    ''
+  ).trim();
 }
 
 export function hasGroqApiKey() {
@@ -69,18 +73,27 @@ CRITICAL RULES & STRICT CONSTRAINTS:
    - Do NOT give generic or random product details from outside this marketplace.
 
 2. MATCHING PRODUCT REQUESTS:
-   - When the user asks for recommendations, specific items, or categories (e.g. "show me laptops", "do you have any calculators or textbooks?", "find cheap electronics", "what else can I bid on?"):
+   - When the user asks for recommendations, specific items, or categories (e.g. "show me laptops", "hp lap for low price", "similar product listed cheaper than this", "find electronics", "what else can I bid on?"):
      a) Search the ACTIVE PRODUCTS LIST above for matches.
-     b) For EVERY matching product, present it cleanly in the chat with:
+     b) Understand abbreviations and campus shorthand:
+        - "lap" or "laptop" or "notebook" -> Laptops (e.g. HP Pavilion Plus)
+        - "hp lap" -> HP Laptops listed in the catalog
+        - "phone" / "mobile" -> Smartphones
+        - "cycle" / "bike" -> Bicycles
+        - "bat" -> Cricket bats / sports gear
+     c) If the user asks for "similar product", "alternative", "cheaper than this", "lower price than this":
+        - Compare against the CURRENT AUCTION LISTING (Category: ${auction?.category || 'General'}, Current Price: ₹${currentPrice}).
+        - Filter items in the catalog in the same category or matching type where Price < ₹${currentPrice}.
+        - Rank cheaper matching items first and display them clearly.
+     d) For EVERY matching product, present it cleanly in the chat with:
         • **[Product Title](/auction/{id})**
         • **Price**: ₹{current_bid or starting_price}
         • **Condition**: {condition} | **Category**: {category}
-        • **Why it matches**: A brief, helpful reason based on the seller's description.
+        • **Why it matches**: A brief, helpful reason based on the seller's description and how its price compares.
         • Direct link: [View & Bid on this Item](/auction/{id})
-     c) If the user asks for alternatives to the currently viewed item, compare it only against other matching items in the catalog above.
 
 3. WHEN NO PRODUCT MATCHES:
-   - If the user asks for a product that is NOT in the CampusBid list above (e.g., they ask for "gaming console" and none is listed):
+   - If the user asks for a product that is NOT in the CampusBid list above (e.g., they ask for an item type with zero listings):
      - Clearly and politely say: "There are currently no products matching '{request}' listed for bidding on CampusBid."
      - NEVER recommend buying it from external websites.
      - Mention 2-3 products from the active catalog above that ARE currently available, or suggest checking back soon.
@@ -92,7 +105,7 @@ CRITICAL RULES & STRICT CONSTRAINTS:
 }
 
 /**
- * Executes chat completion request to Groq API with automatic fallback
+ * Executes chat completion request to Groq API with automatic fallback across multiple models
  */
 export async function askGroqAssistant({
   query,
@@ -118,49 +131,57 @@ export async function askGroqAssistant({
     { role: 'user', content: query },
   ];
 
-  async function executeRequest(modelToUse) {
-    return await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${key}`,
-      },
-      body: JSON.stringify({
-        model: modelToUse,
-        messages: formattedMessages,
-        temperature: 0.5,
-        max_tokens: 1024,
-        top_p: 1,
-      }),
-    });
-  }
+  const candidateModels = [
+    'openai/gpt-oss-120b',
+    'qwen/qwen3.8-27b',
+    'openai/gpt-oss-20b',
+  ];
 
-  let response = await executeRequest(DEFAULT_MODEL);
+  let lastError = null;
 
-  // If primary model returns 404, fallback to secondary model
-  if (!response.ok && response.status === 404) {
-    response = await executeRequest(FALLBACK_MODEL);
-  }
-
-  if (!response.ok) {
-    let errorDetail = 'Failed to connect to AI Assistant';
+  for (const modelToUse of candidateModels) {
     try {
-      const errorJson = await response.json();
-      errorDetail = errorJson?.error?.message || errorDetail;
-    } catch {
-      errorDetail = `${response.status} ${response.statusText}`;
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${key}`,
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          messages: formattedMessages,
+          temperature: 0.4,
+          max_tokens: 1024,
+          top_p: 1,
+        }),
+      });
+
+      if (!response.ok) {
+        let errMessage = `${response.status} ${response.statusText}`;
+        try {
+          const errBody = await response.json();
+          errMessage = errBody?.error?.message || errMessage;
+        } catch {
+          // ignore json parse error
+        }
+        lastError = new Error(errMessage);
+        continue;
+      }
+
+      const data = await response.json();
+      const reply = data.choices?.[0]?.message?.content;
+      if (reply) {
+        return {
+          text: reply,
+          isRealAI: true,
+          model: modelToUse,
+        };
+      }
+    } catch (err) {
+      lastError = err;
     }
-    throw new Error(errorDetail);
   }
 
-  const data = await response.json();
-  const reply = data.choices?.[0]?.message?.content;
-  if (!reply) {
-    throw new Error('Received an empty response from AI Assistant.');
-  }
-
-  return {
-    text: reply,
-    isRealAI: true,
-  };
+  throw lastError || new Error('Failed to obtain a response from AI Assistant.');
 }
+

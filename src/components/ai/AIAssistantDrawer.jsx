@@ -246,56 +246,159 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
 
     // 5. Product search & recommendations query (strictly grounded to listed marketplace items)
     const productKeywords = [
-      'product', 'item', 'laptop', 'phone', 'book', 'textbook', 'cycle', 'bicycle',
+      'product', 'item', 'laptop', 'lap', 'phone', 'book', 'textbook', 'cycle', 'bicycle',
       'electronics', 'furniture', 'recommend', 'show me', 'what else', 'other',
-      'find', 'search', 'listed', 'auction', 'buy', 'looking for', 'cheap', 'budget',
+      'find', 'search', 'listed', 'auction', 'buy', 'looking for', 'cheap', 'cheaper', 'budget',
+      'similar', 'alternative', 'lower price', 'low price', 'less than', 'hp', 'dell', 'mac', 'bat',
     ];
     const isSearchingProducts = productKeywords.some((kw) => q.includes(kw));
 
     if (isSearchingProducts) {
-      const searchTerms = q
+      const currentPrice = auction?.current_bid || auction?.starting_price || 0;
+
+      // Expand common campus slang, abbreviations, and shorthand
+      let normalizedQuery = q
+        .replace(/\blap\b/g, 'laptop')
+        .replace(/\bpc\b/g, 'laptop computer')
+        .replace(/\bmac\b/g, 'macbook apple')
+        .replace(/\bphone\b/g, 'smartphone mobile')
+        .replace(/\bmob\b/g, 'mobile')
+        .replace(/\bcycle\b/g, 'bicycle')
+        .replace(/\bbat\b/g, 'cricket bat');
+
+      const isAskingSimilar = /(similar|alternative|like this|other|compare|instead)/i.test(q);
+      const isAskingCheaper = /(cheap|cheaper|lower|less|budget|affordable|low price|lowest)/i.test(q);
+      const isComparative = isAskingSimilar || /(than this|compared to this|this item|instead)/i.test(q);
+
+      // Start with all other active listings in the marketplace
+      let candidatePool = activeListings.filter((item) => item && item.id !== auction?.id);
+
+      // Extract meaningful search tokens
+      const searchTerms = normalizedQuery
         .replace(/[?.,!]/g, '')
         .split(/\s+/)
-        .filter((w) => w.length > 2 && !['what', 'have', 'show', 'tell', 'about', 'this', 'that', 'with', 'from', 'some', 'else', 'other', 'items', 'products'].includes(w));
+        .filter(
+          (w) =>
+            w.length > 1 &&
+            ![
+              'what', 'have', 'show', 'tell', 'about', 'this', 'that', 'with', 'from',
+              'some', 'else', 'other', 'items', 'products', 'product', 'for', 'the',
+              'than', 'me', 'can', 'you', 'give', 'get', 'any', 'listed', 'there',
+            ].includes(w)
+        );
 
-      const matches = activeListings.filter((item) => {
-        if (!item) return false;
-        const title = (item.title || '').toLowerCase();
-        const cat = (item.category || '').toLowerCase();
-        const desc = (item.description || '').toLowerCase();
-        return searchTerms.some((term) => title.includes(term) || cat.includes(term) || desc.includes(term));
-      });
+      let matchedItems = [];
 
-      if (matches.length > 0) {
+      // If user asks for something "similar" or "cheaper than this"
+      if (isComparative) {
+        const currentCategory = (auction?.category || '').toLowerCase();
+        const currentTitleTokens = (auction?.title || '')
+          .toLowerCase()
+          .replace(/[^\w\s]/g, '')
+          .split(/\s+/)
+          .filter((w) => w.length > 2 && !['with', 'and', 'for', 'the', 'inch', 'plus'].includes(w));
+
+        matchedItems = candidatePool.filter((item) => {
+          const itemCat = (item.category || '').toLowerCase();
+          const itemTitle = (item.title || '').toLowerCase();
+          const isSameCategory = itemCat === currentCategory;
+          const matchesTitleToken = currentTitleTokens.some((t) => itemTitle.includes(t));
+          return isSameCategory || matchesTitleToken;
+        });
+
+        // If specific keyword filters were also specified (e.g. "hp", "mouse", "bat")
+        const specificTerms = searchTerms.filter(
+          (t) => !['similar', 'cheap', 'cheaper', 'lower', 'price', 'low', 'budget'].includes(t)
+        );
+        if (specificTerms.length > 0) {
+          const refined = matchedItems.filter((item) => {
+            const fullText = [(item.title || ''), (item.category || ''), (item.description || '')].join(' ').toLowerCase();
+            return specificTerms.some((st) => fullText.includes(st));
+          });
+          if (refined.length > 0) {
+            matchedItems = refined;
+          }
+        }
+      }
+
+      // If not comparative or no comparative items matched, perform full keyword search
+      if (matchedItems.length === 0 && searchTerms.length > 0) {
+        const cleanTerms = searchTerms.filter(
+          (t) => !['cheap', 'cheaper', 'price', 'low', 'budget', 'lowest'].includes(t)
+        );
+        const termsToSearch = cleanTerms.length > 0 ? cleanTerms : searchTerms;
+
+        matchedItems = candidatePool.filter((item) => {
+          const fullText = [
+            item.title || '',
+            item.category || '',
+            item.description || '',
+          ].join(' ').toLowerCase();
+          return termsToSearch.some((term) => fullText.includes(term));
+        });
+      }
+
+      // If cheaper was explicitly requested, filter and rank by lowest price
+      if (isAskingCheaper) {
+        const cheaperItems = matchedItems.filter(
+          (item) => (item.current_bid || item.starting_price || 0) < currentPrice
+        );
+        if (cheaperItems.length > 0) {
+          matchedItems = cheaperItems;
+        }
+        matchedItems.sort(
+          (a, b) =>
+            (a.current_bid || a.starting_price || 0) - (b.current_bid || b.starting_price || 0)
+        );
+      }
+
+      if (matchedItems.length > 0) {
         return {
-          text: `### Matching Products on CampusBid\n\n` +
+          text:
+            `### Matching Products on CampusBid\n\n` +
             `Here are active products listed for bidding on CampusBid that match your request:\n\n` +
-            matches.slice(0, 4).map((p) => {
-              const price = p.current_bid || p.starting_price;
-              const cond = (p.condition || 'good').replace('_', ' ');
-              return `• **[${p.title}](/auction/${p.id})**\n` +
-                     `  - **Current Price**: ${formatINR(price)} (Starts at ${formatINR(p.starting_price)})\n` +
-                     `  - **Category**: ${p.category} • **Condition**: ${cond}\n` +
-                     `  - **Description**: ${p.description ? p.description.slice(0, 110) + '...' : 'Verified campus item'}\n` +
-                     `  - [View Auction Listing](/auction/${p.id})\n`;
-            }).join('\n') +
+            matchedItems
+              .slice(0, 4)
+              .map((p) => {
+                const price = p.current_bid || p.starting_price;
+                const cond = (p.condition || 'good').replace('_', ' ');
+                const isCheaper = price < currentPrice;
+                const priceDiff = currentPrice - price;
+                const matchReason = isCheaper
+                  ? `Cheaper alternative (${formatINR(priceDiff)} less than currently viewed item)`
+                  : `Active ${p.category} listing in ${cond} condition`;
+
+                return (
+                  `• **[${p.title}](/auction/${p.id})**\n` +
+                  `  - **Current Price**: ${formatINR(price)} (Starts at ${formatINR(p.starting_price)})\n` +
+                  `  - **Category**: ${p.category} • **Condition**: ${cond}\n` +
+                  `  - **Why it matches**: ${matchReason}\n` +
+                  `  - [View Auction Listing](/auction/${p.id})\n`
+                );
+              })
+              .join('\n') +
             `\n> **Note:** Only showing products currently listed on CampusBid. No external or random items are shown.`,
           isFallback: true,
         };
       }
 
       // No match found -> strictly inform user and show what IS available
-      const otherAvailable = activeListings
-        .filter((item) => item.id !== auction?.id)
+      const otherAvailable = candidatePool
         .slice(0, 3)
-        .map((p) => `• **[${p.title}](/auction/${p.id})** — ${formatINR(p.current_bid || p.starting_price)} (${p.category})`)
+        .map(
+          (p) =>
+            `• **[${p.title}](/auction/${p.id})** — ${formatINR(p.current_bid || p.starting_price)} (${p.category})`
+        )
         .join('\n');
 
       return {
-        text: `### No Matching Products Found on CampusBid\n\n` +
+        text:
+          `### No Matching Products Found on CampusBid\n\n` +
           `There are currently **no products matching "${query}"** listed on CampusBid.\n\n` +
           `*Note: As a strict rule, I do not pull products from Google or external stores — only verified campus listings.*\n\n` +
-          (otherAvailable ? `**Other Active Products Currently Listed for Bidding:**\n${otherAvailable}\n\n` : '') +
+          (otherAvailable
+            ? `**Other Active Products Currently Listed for Bidding:**\n${otherAvailable}\n\n`
+            : '') +
           `You can save a search on the **[Browse Page](/browse)** to receive real-time notifications when a matching item is listed!`,
         isFallback: true,
       };
