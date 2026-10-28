@@ -48,7 +48,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
         {
           id: 'welcome',
           sender: 'assistant',
-          text: `Hello! I'm your **CampusBid AI Assistant**${isGroqActive ? ' powered by **Groq Llama 3**' : ''}. I can inspect "${auction.title}", uncover item risks, summarize the bidding dynamics, or generate a customized pre-inspection checklist for campus handover.`,
+          text: `Hello! I'm your **CampusBid AI Assistant**${isGroqActive ? ' powered by **Groq Cloud AI**' : ''}. I can inspect "${auction.title}", uncover item risks, summarize the bidding dynamics, or generate a customized pre-inspection checklist for campus handover.`,
           isFallback: !isGroqActive,
           modelName: isGroqActive ? selectedModel : 'Rule-Based Analyzer',
           suggestions: [
@@ -382,7 +382,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
           <div className="bg-amber-50 px-4 py-2 border-b border-amber-200/80 flex items-center justify-between text-[11px] text-amber-900">
             <span className="flex items-center gap-1.5">
               <Key className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-              Add Groq API key for live Llama 3 model reasoning.
+              Add Groq API key for live AI reasoning (GPT-OSS, Qwen, or Llama).
             </span>
             <button
               type="button"
@@ -429,7 +429,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
                   <div className="mt-2.5 flex items-center justify-between pt-1.5 border-t border-surface-200/60 text-[10px] text-surface-400">
                     <span className="flex items-center gap-1">
                       <Cpu className="h-3 w-3 text-purple-500" />
-                      {m.isRealAI ? `Groq • ${m.modelName || 'Llama 3'}` : 'Grounded Heuristic Analyzer'}
+                      {m.isRealAI ? `Groq • ${m.modelName || 'Live AI'}` : 'Grounded Heuristic Analyzer'}
                     </span>
                     {m.isRealAI && (
                       <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded">

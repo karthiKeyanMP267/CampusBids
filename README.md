@@ -17,8 +17,8 @@
 - **Server-Side Evaluation**: When a new manual bid is placed, the transactional engine automatically raises bids on behalf of proxy bidders up to their confidential ceilings in strict increment steps.
 - **Instant Outbid Notifications**: When a student's proxy budget is exceeded, real-time alert notifications trigger immediately.
 
-### 3. AI Auction Advisor (Powered by Groq & Llama 3)
-- **Real Groq AI Inference**: Integrated with Groq's high-speed inference engine supporting `llama-3.3-70b-versatile` and `llama-3.1-8b-instant`.
+### 3. AI Auction Advisor (Powered by Groq Cloud AI)
+- **Real Groq AI Inference**: Integrated with Groq's high-speed inference engine supporting verified free models: `openai/gpt-oss-120b` (Default recommended), `openai/gpt-oss-20b`, `qwen/qwen3.8-27b`, and `llama-3.1-8b-instant` with automatic fallback.
 - **In-Drawer Configuration**: Configure your Groq API key directly in the UI drawer or via `VITE_GROQ_API_KEY` in `.env.local`.
 - **Rich Markdown Chat**: AI responses render with formatted Markdown headings, bullet points, checklists (`- [ ]`), bolding, and blockquotes via a custom zero-dependency renderer.
 - **Listing Grounding**: Provides listing risk assessments, tailored physical pre-inspection checklists for campus meetups, and bidding history summaries without hallucinating missing data.
