@@ -76,8 +76,9 @@ export default function MyListingsPage() {
     loadSellerListings();
 
     // Realtime subscription for updates to user's listings
+    const channelName = `seller-listings-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel(`seller-listings-${user.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {

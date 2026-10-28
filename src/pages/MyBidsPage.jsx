@@ -12,11 +12,13 @@ import {
   Handshake,
   Loader2,
   Trophy,
+  Bot,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabaseClient';
 import { formatINR, cn } from '../lib/utils';
 import Badge from '../components/ui/Badge';
+import DealScoreBadge from '../components/auction/DealScoreBadge';
 
 const BID_TABS = [
   { id: 'all', label: 'All Bids' },
@@ -137,8 +139,9 @@ export default function MyBidsPage() {
     loadUserBidsAndAuctions();
 
     // Realtime subscription for auctions and bids
+    const channelName = `user-bids-feed-${user.id}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel(`user-bids-feed-${user.id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'bids', filter: `bidder_id=eq.${user.id}` },
@@ -354,8 +357,9 @@ export default function MyBidsPage() {
                       className="h-20 w-24 rounded-xl object-cover border border-surface-100 shrink-0"
                     />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex flex-wrap items-center gap-2 mb-1">
                         <BidOutcomeBadge auction={auction} />
+                        <DealScoreBadge auction={auction} compact />
                         <span className="text-xs text-surface-400 capitalize">
                           {auction.category}
                         </span>

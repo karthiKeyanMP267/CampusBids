@@ -78,19 +78,31 @@ export default function HomePage() {
     if (!isConfigured || !supabase) return;
 
     // Realtime subscription for newly created or updated auctions
-    const channel = supabase
-      .channel('home-auctions-feed')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'auctions' },
-        () => {
-          loadRealAuctions();
-        }
-      )
-      .subscribe();
+    let channel = null;
+    try {
+      const channelName = `home-auctions-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+      channel = supabase
+        .channel(channelName)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'auctions' },
+          () => {
+            loadRealAuctions();
+          }
+        );
+      channel.subscribe();
+    } catch (err) {
+      console.warn('HomePage realtime subscription skipped:', err);
+    }
 
     return () => {
-      supabase.removeChannel(channel);
+      if (channel && supabase) {
+        try {
+          supabase.removeChannel(channel);
+        } catch {
+          // Ignore
+        }
+      }
     };
   }, [isConfigured]);
 

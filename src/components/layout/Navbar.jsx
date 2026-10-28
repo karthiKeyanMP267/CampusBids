@@ -15,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { getInitials } from '../../lib/utils';
+import NotificationBell from '../notifications/NotificationBell';
+import ErrorBoundary from '../ui/ErrorBoundary';
 
 export default function Navbar() {
   const { user, profile, isAuthenticated, signOut } = useAuth();
@@ -97,65 +99,71 @@ export default function Navbar() {
             </Link>
 
             {isAuthenticated ? (
-              <div className="relative">
-                <button
-                  onClick={() => setUserMenuOpen(!userMenuOpen)}
-                  className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white py-1.5 pl-2 pr-3 text-sm font-medium text-surface-700 shadow-xs hover:bg-surface-50 transition-colors"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-50 text-brand-700 font-bold text-xs">
-                    {getInitials(displayName)}
-                  </div>
-                  <span className="max-w-[100px] truncate">{displayName}</span>
-                </button>
+              <div className="flex items-center gap-2">
+                <ErrorBoundary>
+                  <NotificationBell />
+                </ErrorBoundary>
 
-                {userMenuOpen && (
-                  <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-surface-200 bg-white p-2 shadow-lg animate-fade-in z-50">
-                    <div className="px-3 py-2 border-b border-surface-100">
-                      <p className="text-sm font-semibold text-surface-900 truncate">
-                        {displayName}
-                      </p>
-                      <p className="text-xs text-surface-400 truncate">{user.email}</p>
-                      <p className="text-[11px] text-brand-600 font-medium mt-0.5">{college}</p>
+                <div className="relative">
+                  <button
+                    onClick={() => setUserMenuOpen(!userMenuOpen)}
+                    className="flex items-center gap-2 rounded-xl border border-surface-200 bg-white py-1.5 pl-2 pr-3 text-sm font-medium text-surface-700 shadow-xs hover:bg-surface-50 transition-colors"
+                  >
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-50 text-brand-700 font-bold text-xs">
+                      {getInitials(displayName)}
                     </div>
+                    <span className="max-w-[100px] truncate">{displayName}</span>
+                  </button>
 
-                    <div className="pt-1 space-y-0.5">
-                      <Link
-                        to="/my-listings"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
-                      >
-                        <Package className="h-3.5 w-3.5 text-surface-400" />
-                        My Listings (Seller)
-                      </Link>
-                      <Link
-                        to="/my-bids"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
-                      >
-                        <Gavel className="h-3.5 w-3.5 text-surface-400" />
-                        My Bids (Buyer)
-                      </Link>
-                      <Link
-                        to="/create"
-                        onClick={() => setUserMenuOpen(false)}
-                        className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
-                      >
-                        <Plus className="h-3.5 w-3.5 text-surface-400" />
-                        Create Listing
-                      </Link>
-                      <button
-                        onClick={() => {
-                          setUserMenuOpen(false);
-                          signOut();
-                        }}
-                        className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 text-left transition-colors"
-                      >
-                        <LogOut className="h-3.5 w-3.5" />
-                        Sign Out
-                      </button>
+                  {userMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 rounded-2xl border border-surface-200 bg-white p-2 shadow-lg animate-fade-in z-50">
+                      <div className="px-3 py-2 border-b border-surface-100">
+                        <p className="text-sm font-semibold text-surface-900 truncate">
+                          {displayName}
+                        </p>
+                        <p className="text-xs text-surface-400 truncate">{user.email}</p>
+                        <p className="text-[11px] text-brand-600 font-medium mt-0.5">{college}</p>
+                      </div>
+
+                      <div className="pt-1 space-y-0.5">
+                        <Link
+                          to="/my-listings"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
+                        >
+                          <Package className="h-3.5 w-3.5 text-surface-400" />
+                          My Listings (Seller)
+                        </Link>
+                        <Link
+                          to="/my-bids"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
+                        >
+                          <Gavel className="h-3.5 w-3.5 text-surface-400" />
+                          My Bids (Buyer)
+                        </Link>
+                        <Link
+                          to="/create"
+                          onClick={() => setUserMenuOpen(false)}
+                          className="flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-surface-700 hover:bg-surface-50"
+                        >
+                          <Plus className="h-3.5 w-3.5 text-surface-400" />
+                          Create Listing
+                        </Link>
+                        <button
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            signOut();
+                          }}
+                          className="w-full flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-medium text-red-600 hover:bg-red-50 text-left transition-colors"
+                        >
+                          <LogOut className="h-3.5 w-3.5" />
+                          Sign Out
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               <div className="flex items-center gap-2">
@@ -176,14 +184,21 @@ export default function Navbar() {
             )}
           </nav>
 
-          {/* Mobile menu button */}
-          <button
-            onClick={() => setMobileOpen(!mobileOpen)}
-            className="sm:hidden rounded-lg p-2 text-surface-600 hover:bg-surface-100"
-            aria-label="Toggle menu"
-          >
-            {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* Mobile Right Actions */}
+          <div className="flex sm:hidden items-center gap-2">
+            {isAuthenticated && (
+              <ErrorBoundary>
+                <NotificationBell />
+              </ErrorBoundary>
+            )}
+            <button
+              onClick={() => setMobileOpen(!mobileOpen)}
+              className="rounded-lg p-2 text-surface-600 hover:bg-surface-100"
+              aria-label="Toggle menu"
+            >
+              {mobileOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
       </div>
 

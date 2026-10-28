@@ -8,9 +8,11 @@ import {
   IndianRupee,
   PackageOpen,
   Plus,
+  Bookmark,
 } from 'lucide-react';
 import AuctionCard from '../components/auction/AuctionCard';
 import CategoryBar from '../components/ui/CategoryBar';
+import SavedSearchesModal from '../components/search/SavedSearchesModal';
 import { CONDITIONS, SAMPLE_AUCTIONS } from '../lib/constants';
 import { supabase, isSupabaseConfigured } from '../lib/supabaseClient';
 import { cn } from '../lib/utils';
@@ -29,6 +31,7 @@ export default function BrowsePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [savedSearchesOpen, setSavedSearchesOpen] = useState(false);
   const isConfigured = isSupabaseConfigured();
 
   // Filter state from URL params
@@ -117,8 +120,9 @@ export default function BrowsePage() {
     if (!isConfigured || !supabase) return;
 
     // Realtime subscription for auction changes
+    const channelName = `browse-auctions-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel('browse-auctions-channel')
+      .channel(channelName)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'auctions' },
@@ -210,6 +214,17 @@ export default function BrowsePage() {
                 {activeFilterCount}
               </span>
             )}
+          </button>
+
+          {/* Saved Searches Button */}
+          <button
+            type="button"
+            onClick={() => setSavedSearchesOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl border border-surface-200 bg-white px-3 py-2 text-sm font-semibold text-surface-700 hover:bg-surface-50 shadow-2xs transition-colors"
+            title="Save this search or view match alerts"
+          >
+            <Bookmark className="h-4 w-4 text-brand-600" />
+            <span className="hidden sm:inline">Saved Searches</span>
           </button>
 
           {/* Sort Dropdown */}
@@ -471,6 +486,24 @@ export default function BrowsePage() {
           )}
         </main>
       </div>
+
+      {/* Saved Searches & Alerts Modal */}
+      <SavedSearchesModal
+        isOpen={savedSearchesOpen}
+        onClose={() => setSavedSearchesOpen(false)}
+        currentCriteria={{
+          query: searchQuery,
+          category: selectedCategory,
+          condition: selectedCondition,
+          max_price: maxPrice ? Number(maxPrice) : null,
+        }}
+        onApplySearch={(saved) => {
+          if (saved.query !== undefined) updateParam('q', saved.query);
+          if (saved.category !== undefined) updateParam('category', saved.category);
+          if (saved.condition !== undefined) updateParam('condition', saved.condition);
+          if (saved.max_price !== undefined) updateParam('maxPrice', saved.max_price ? String(saved.max_price) : null);
+        }}
+      />
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   Loader2,
   Sparkles,
   Trophy,
+  Bot,
 } from 'lucide-react';
 import { useCountdown } from '../hooks/useCountdown';
 import { useAuth } from '../context/AuthContext';
@@ -21,6 +22,10 @@ import { SAMPLE_AUCTIONS, CONDITIONS, CATEGORIES } from '../lib/constants';
 import { formatINR, getInitials, cn } from '../lib/utils';
 import { supabase } from '../lib/supabaseClient';
 import Badge from '../components/ui/Badge';
+import AutoBiddingCard from '../components/auction/AutoBiddingCard';
+import AuctionQACard from '../components/auction/AuctionQACard';
+import DealScoreBadge from '../components/auction/DealScoreBadge';
+import AIAssistantDrawer from '../components/ai/AIAssistantDrawer';
 
 export default function AuctionDetailPage() {
   const { id } = useParams();
@@ -35,6 +40,7 @@ export default function AuctionDetailPage() {
   const [bidError, setBidError] = useState('');
   const [bidSuccess, setBidSuccess] = useState('');
   const [selectedImage, setSelectedImage] = useState(0);
+  const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
 
   // Load auction, bids, and handover data
   async function loadAuctionData() {
@@ -98,8 +104,9 @@ export default function AuctionDetailPage() {
     if (!isConfigured || !supabase) return;
 
     // Realtime channel for this auction, bids, and handovers
+    const channelName = `auction-room-${id}-${Math.random().toString(36).slice(2, 8)}`;
     const channel = supabase
-      .channel(`auction-room-${id}`)
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -349,6 +356,9 @@ export default function AuctionDetailPage() {
             </p>
           </div>
 
+          {/* Transparent Deal Score Analysis */}
+          <DealScoreBadge auction={auction} />
+
           {/* Seller Profile Card */}
           <div className="rounded-2xl border border-surface-200 bg-white p-5 shadow-sm">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-surface-400 mb-3">
@@ -429,12 +439,35 @@ export default function AuctionDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Public Questions & Answers (Q&A) */}
+          <AuctionQACard auction={auction} />
         </div>
 
         {/* ─── Right 1 col: Bidding Panel & Workflows ─── */}
         <div className="space-y-6">
           {/* Live Countdown Card */}
           <CountdownCard closingAt={auction.closing_at} status={auction.status} />
+
+          {/* AI Assistant Quick Advice Trigger */}
+          <div className="rounded-2xl border border-purple-200 bg-purple-50/70 p-4 shadow-2xs flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-600 text-white shadow-2xs shrink-0">
+                <Bot className="h-4 w-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-surface-900">AI Auction Advisor</h4>
+                <p className="text-[11px] text-surface-500">Risk check, specs & checklist</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setAiDrawerOpen(true)}
+              className="rounded-xl bg-purple-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-purple-700 transition-colors shadow-2xs shrink-0"
+            >
+              Ask AI
+            </button>
+          </div>
 
           {/* Current Bid & Pricing Summary */}
           <div className="rounded-2xl border border-surface-200 bg-white p-6 shadow-sm">
@@ -561,6 +594,11 @@ export default function AuctionDetailPage() {
             )}
           </div>
 
+          {/* Automatic Proxy Bidding Card */}
+          {auction.status === 'active' && !isOwner && (
+            <AutoBiddingCard auction={auction} onUpdated={loadAuctionData} />
+          )}
+
           {/* ─── Seller Approval Workflow ─── */}
           {isOwner && auction.status === 'pending_approval' && (
             <SellerApprovalCard
@@ -614,6 +652,14 @@ export default function AuctionDetailPage() {
           </div>
         </div>
       </div>
+
+      {/* AI Assistant Drawer */}
+      <AIAssistantDrawer
+        isOpen={aiDrawerOpen}
+        onClose={() => setAiDrawerOpen(false)}
+        auction={auction}
+        bids={bids}
+      />
     </div>
   );
 }

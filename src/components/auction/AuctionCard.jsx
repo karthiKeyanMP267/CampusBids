@@ -4,6 +4,7 @@ import { useCountdown } from '../../hooks/useCountdown';
 import { formatINR, getInitials, cn } from '../../lib/utils';
 import { CONDITIONS } from '../../lib/constants';
 import Badge from '../ui/Badge';
+import DealScoreBadge from './DealScoreBadge';
 
 export default function AuctionCard({ auction, className }) {
   const remaining = useCountdown(auction.closing_at);
@@ -67,6 +68,14 @@ export default function AuctionCard({ auction, className }) {
 
       {/* Content */}
       <div className="flex flex-1 flex-col p-4">
+        {/* Deal Score & Category */}
+        <div className="mb-2 flex items-center justify-between">
+          <DealScoreBadge auction={auction} compact />
+          <span className="text-[10px] uppercase font-bold text-surface-400 tracking-wider">
+            {auction.category}
+          </span>
+        </div>
+
         {/* Title */}
         <h3 className="text-sm font-semibold text-surface-900 leading-snug line-clamp-2 group-hover:text-brand-600 transition-colors">
           {auction.title}
