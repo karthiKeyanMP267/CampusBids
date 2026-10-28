@@ -42,6 +42,21 @@ export default function AuctionDetailPage() {
   const [selectedImage, setSelectedImage] = useState(0);
   const [aiDrawerOpen, setAiDrawerOpen] = useState(false);
 
+  // Authoritative sorted bids list: Always ordered strictly by amount descending (highest bid first)
+  const sortedBids = useMemo(() => {
+    return [...bids].sort((a, b) => {
+      const amountDiff = (b.amount || 0) - (a.amount || 0);
+      if (amountDiff !== 0) return amountDiff;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+  }, [bids]);
+
+  // Actual highest bid amount on this auction
+  const highestBidAmount = useMemo(() => {
+    if (!sortedBids.length) return auction?.current_bid || 0;
+    return Math.max(sortedBids[0]?.amount || 0, auction?.current_bid || 0);
+  }, [sortedBids, auction?.current_bid]);
+
   // Load auction, bids, and handover data
   async function loadAuctionData() {
     if (isConfigured && supabase) {
@@ -63,11 +78,12 @@ export default function AuctionDetailPage() {
           }
           setAuction(data);
 
-          // Load bids
+          // Load bids ordered by amount descending, then created_at descending
           const { data: bidsData } = await supabase
             .from('bids')
             .select('*, bidder:profiles!bidder_id(display_name, college, avatar_url)')
             .eq('auction_id', id)
+            .order('amount', { ascending: false })
             .order('created_at', { ascending: false });
           setBids(bidsData || []);
 
@@ -106,6 +122,7 @@ export default function AuctionDetailPage() {
         .from('bids')
         .select('*, bidder:profiles!bidder_id(display_name, college, avatar_url)')
         .eq('auction_id', id)
+        .order('amount', { ascending: false })
         .order('created_at', { ascending: false })
         .limit(50);
       if (bidsData) {
@@ -164,7 +181,12 @@ export default function AuctionDetailPage() {
                     : 'Campus',
                 },
               };
-              return [optimisticBid, ...prev];
+              const updated = [optimisticBid, ...prev];
+              return updated.sort((a, b) => {
+                const diff = (b.amount || 0) - (a.amount || 0);
+                if (diff !== 0) return diff;
+                return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+              });
             });
           }
           // 2. Fetch full profile joins from database
@@ -426,7 +448,7 @@ export default function AuctionDetailPage() {
               <div className="flex items-center gap-2">
                 <History className="h-4 w-4 text-surface-500" />
                 <h3 className="text-sm font-semibold text-surface-900">
-                  Bid History ({bids.length})
+                  Bid History ({sortedBids.length})
                 </h3>
               </div>
               <span className="text-xs font-medium text-emerald-600 flex items-center gap-1">
@@ -435,40 +457,43 @@ export default function AuctionDetailPage() {
               </span>
             </div>
 
-            {bids.length > 0 ? (
+            {sortedBids.length > 0 ? (
               <div className="divide-y divide-surface-100 max-h-72 overflow-y-auto">
-                {bids.map((b, i) => (
-                  <div
-                    key={b.id || i}
-                    className="flex items-center justify-between py-3 text-sm animate-fade-in"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-100 text-surface-700 text-xs font-bold">
-                        {getInitials(b.bidder?.display_name || b.bidder_name || 'B')}
+                {sortedBids.map((b, i) => {
+                  const isHighest = (b.amount === highestBidAmount && highestBidAmount > 0) || i === 0;
+                  return (
+                    <div
+                      key={b.id || i}
+                      className="flex items-center justify-between py-3 text-sm animate-fade-in"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-100 text-surface-700 text-xs font-bold">
+                          {getInitials(b.bidder?.display_name || b.bidder_name || 'B')}
+                        </div>
+                        <div>
+                          <p className="font-medium text-surface-900">
+                            {b.bidder?.display_name || b.bidder_name || 'Student Bidder'}
+                            {isHighest && (
+                              <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                                Highest
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-surface-400">
+                            {new Date(b.created_at).toLocaleTimeString([], {
+                              hour: '2-digit',
+                              minute: '2-digit',
+                              second: '2-digit',
+                            })}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium text-surface-900">
-                          {b.bidder?.display_name || b.bidder_name || 'Student Bidder'}
-                          {i === 0 && (
-                            <span className="ml-2 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
-                              Highest
-                            </span>
-                          )}
-                        </p>
-                        <p className="text-xs text-surface-400">
-                          {new Date(b.created_at).toLocaleTimeString([], {
-                            hour: '2-digit',
-                            minute: '2-digit',
-                            second: '2-digit',
-                          })}
-                        </p>
-                      </div>
+                      <span className="font-bold text-surface-900">
+                        {formatINR(b.amount)}
+                      </span>
                     </div>
-                    <span className="font-bold text-surface-900">
-                      {formatINR(b.amount)}
-                    </span>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-8 text-surface-400">
