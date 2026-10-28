@@ -1,20 +1,34 @@
 import React from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * Lightweight, zero-dependency Markdown renderer designed specifically
  * for AI chat responses and rich assistant commentary.
  * Handles headings, bold/italics/strikethrough, bullet lists, numbered lists, checklists,
- * tables, blockquotes, code blocks, inline code, and links.
+ * tables, blockquotes, code blocks, inline code, and interactive routed links.
  */
-export default function MarkdownRenderer({ content, className = '' }) {
+export default function MarkdownRenderer({ content, className = '', onLinkClick }) {
+  const navigate = useNavigate();
+
   if (!content) return null;
+
+  const handleNav = (url, e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (onLinkClick) {
+      onLinkClick(url);
+    } else {
+      navigate(url);
+    }
+  };
 
   const lines = content.split('\n');
   const elements = [];
   let currentList = null; // { type: 'ul' | 'ol' | 'checklist', items: [] }
   let inCodeBlock = false;
   let codeBlockContent = [];
-  let codeBlockLang = '';
 
   function flushList() {
     if (!currentList) return;
@@ -23,7 +37,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
         <ul key={`ul-${elements.length}`} className="my-2 space-y-1 pl-4 list-disc marker:text-purple-500">
           {currentList.items.map((item, idx) => (
             <li key={idx} className="text-xs leading-relaxed">
-              {renderInline(item)}
+              {renderInline(item, 0, handleNav)}
             </li>
           ))}
         </ul>
@@ -40,7 +54,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
                 className="mt-0.5 h-3.5 w-3.5 rounded border-surface-300 text-purple-600 focus:ring-purple-400"
               />
               <span className={item.checked ? 'line-through text-surface-400' : 'text-surface-800'}>
-                {renderInline(item.text)}
+                {renderInline(item.text, 0, handleNav)}
               </span>
             </div>
           ))}
@@ -51,7 +65,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
         <ol key={`ol-${elements.length}`} className="my-2 space-y-1 pl-4 list-decimal marker:text-purple-600 font-medium">
           {currentList.items.map((item, idx) => (
             <li key={idx} className="text-xs font-normal leading-relaxed text-surface-800">
-              {renderInline(item)}
+              {renderInline(item, 0, handleNav)}
             </li>
           ))}
         </ol>
@@ -77,11 +91,9 @@ export default function MarkdownRenderer({ content, className = '' }) {
         );
         inCodeBlock = false;
         codeBlockContent = [];
-        codeBlockLang = '';
       } else {
         flushList();
         inCodeBlock = true;
-        codeBlockLang = trimmed.slice(3).trim();
       }
       continue;
     }
@@ -100,7 +112,6 @@ export default function MarkdownRenderer({ content, className = '' }) {
     // Check if current line starts a Markdown Table
     if (trimmed.includes('|')) {
       const nextLine = (lines[i + 1] || '').trim();
-      // Delimiter row matches patterns like |---|---| or |:---|:---:|---:| or ---|---
       const isTableSeparator =
         nextLine.includes('|') &&
         nextLine.split('|').filter((s) => s.trim().length > 0).every((s) => /^:?-+:?$/.test(s.trim()));
@@ -116,13 +127,12 @@ export default function MarkdownRenderer({ content, className = '' }) {
           return 'text-left';
         });
 
-        // Collect table rows
         const tableRows = [];
         i += 2; // skip header and delimiter lines
         while (i < lines.length) {
           const rowLine = lines[i].trim();
           if (!rowLine || !rowLine.includes('|')) {
-            i--; // step back to allow outer loop to handle non-table line
+            i--;
             break;
           }
           tableRows.push(splitTableRow(rowLine));
@@ -142,7 +152,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
                       key={hIdx}
                       className={`py-2 px-3 font-semibold text-surface-900 ${alignments[hIdx] || 'text-left'}`}
                     >
-                      {renderInline(header)}
+                      {renderInline(header, 0, handleNav)}
                     </th>
                   ))}
                 </tr>
@@ -155,7 +165,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
                         key={cIdx}
                         className={`py-2 px-3 text-surface-700 ${alignments[cIdx] || 'text-left'}`}
                       >
-                        {renderInline(cell)}
+                        {renderInline(cell, 0, handleNav)}
                       </td>
                     ))}
                   </tr>
@@ -211,7 +221,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
     if (trimmed.startsWith('### ')) {
       elements.push(
         <h4 key={`h4-${elements.length}`} className="mt-3 mb-1 text-xs font-bold text-surface-900 tracking-wide uppercase">
-          {renderInline(trimmed.slice(4))}
+          {renderInline(trimmed.slice(4), 0, handleNav)}
         </h4>
       );
       continue;
@@ -219,7 +229,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
     if (trimmed.startsWith('## ')) {
       elements.push(
         <h3 key={`h3-${elements.length}`} className="mt-3.5 mb-1.5 text-sm font-bold text-surface-900">
-          {renderInline(trimmed.slice(3))}
+          {renderInline(trimmed.slice(3), 0, handleNav)}
         </h3>
       );
       continue;
@@ -227,7 +237,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
     if (trimmed.startsWith('# ')) {
       elements.push(
         <h2 key={`h2-${elements.length}`} className="mt-4 mb-2 text-base font-bold text-surface-950">
-          {renderInline(trimmed.slice(2))}
+          {renderInline(trimmed.slice(2), 0, handleNav)}
         </h2>
       );
       continue;
@@ -240,7 +250,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
           key={`quote-${elements.length}`}
           className="my-2 border-l-2 border-purple-500 bg-purple-50/50 py-1.5 px-3 rounded-r-lg text-xs italic text-surface-700"
         >
-          {renderInline(trimmed.slice(2))}
+          {renderInline(trimmed.slice(2), 0, handleNav)}
         </blockquote>
       );
       continue;
@@ -255,7 +265,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
     // Standard paragraph
     elements.push(
       <p key={`p-${elements.length}`} className="my-1 text-xs leading-relaxed text-surface-800">
-        {renderInline(line)}
+        {renderInline(line, 0, handleNav)}
       </p>
     );
   }
@@ -276,17 +286,109 @@ function splitTableRow(line) {
 }
 
 /**
- * Parses inline markdown: ***bold italic***, **bold**, *italic*, ~~strikethrough~~, `code`, [link](url)
+ * Parses inline markdown recursively:
+ * [link](url), ***bold italic***, **bold**, *italic*, ~~strikethrough~~, `code`
  */
-function renderInline(text) {
-  if (typeof text !== 'string') return text;
+function renderInline(text, depth = 0, onNav = null) {
+  if (typeof text !== 'string' || depth > 4) return text;
 
-  // Regex tokens: code, bold+italic, bold, italic, strikethrough, link
-  const tokenRegex = /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g;
+  // Prioritize links first, then inline code, bold-italic, bold, italic, strikethrough
+  const tokenRegex = /(\[[^\]]+\]\([^)]+\)|`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~)/g;
   const parts = text.split(tokenRegex);
 
   return parts.map((part, index) => {
     if (!part) return null;
+
+    // Link [text](url)
+    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+    if (linkMatch) {
+      const rawUrl = linkMatch[2].trim();
+      const linkLabel = linkMatch[1];
+      const isAuction = rawUrl.startsWith('/auction/') || rawUrl.includes('/auction/');
+      const isInternal = rawUrl.startsWith('/') || rawUrl.startsWith('#');
+
+      if (isInternal) {
+        return (
+          <button
+            key={index}
+            type="button"
+            onClick={(e) => {
+              if (onNav) {
+                onNav(rawUrl, e);
+              }
+            }}
+            className={
+              isAuction
+                ? 'inline-flex items-center gap-1.5 font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 active:bg-purple-300 px-2.5 py-1 rounded-xl transition-all text-xs my-0.5 border border-purple-300 shadow-2xs hover:shadow-xs cursor-pointer group text-left align-middle'
+                : 'text-purple-600 hover:text-purple-700 underline underline-offset-2 font-medium cursor-pointer inline text-xs p-0 bg-transparent border-none align-baseline'
+            }
+            title={isAuction ? `Go to auction: ${linkLabel}` : linkLabel}
+          >
+            {isAuction && (
+              <span aria-hidden="true" className="group-hover:scale-110 transition-transform">
+                🏷️
+              </span>
+            )}
+            <span className={isAuction ? 'underline-offset-2 group-hover:underline' : ''}>
+              {renderInline(linkLabel, depth + 1, onNav)}
+            </span>
+            {isAuction && (
+              <span className="text-purple-500 group-hover:translate-x-0.5 transition-transform font-bold ml-0.5">
+                →
+              </span>
+            )}
+          </button>
+        );
+      }
+
+      return (
+        <a
+          key={index}
+          href={rawUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-purple-600 hover:text-purple-700 underline underline-offset-2 font-medium"
+        >
+          {renderInline(linkLabel, depth + 1, onNav)}
+        </a>
+      );
+    }
+
+    // Bold + Italic ***text***
+    if (part.startsWith('***') && part.endsWith('***') && part.length > 6) {
+      return (
+        <strong key={index} className="font-semibold text-surface-900 italic">
+          {renderInline(part.slice(3, -3), depth + 1, onNav)}
+        </strong>
+      );
+    }
+
+    // Bold **text**
+    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
+      return (
+        <strong key={index} className="font-semibold text-surface-900">
+          {renderInline(part.slice(2, -2), depth + 1, onNav)}
+        </strong>
+      );
+    }
+
+    // Italic *text*
+    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
+      return (
+        <em key={index} className="italic text-surface-700">
+          {renderInline(part.slice(1, -1), depth + 1, onNav)}
+        </em>
+      );
+    }
+
+    // Strikethrough ~~text~~
+    if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) {
+      return (
+        <del key={index} className="line-through text-surface-400">
+          {renderInline(part.slice(2, -2), depth + 1, onNav)}
+        </del>
+      );
+    }
 
     // Inline code `code`
     if (part.startsWith('`') && part.endsWith('`') && part.length > 2) {
@@ -297,66 +399,6 @@ function renderInline(text) {
         >
           {part.slice(1, -1)}
         </code>
-      );
-    }
-
-    // Bold + Italic ***text***
-    if (part.startsWith('***') && part.endsWith('***') && part.length > 6) {
-      return (
-        <strong key={index} className="font-semibold text-surface-900 italic">
-          {part.slice(3, -3)}
-        </strong>
-      );
-    }
-
-    // Bold **text**
-    if (part.startsWith('**') && part.endsWith('**') && part.length > 4) {
-      return (
-        <strong key={index} className="font-semibold text-surface-900">
-          {part.slice(2, -2)}
-        </strong>
-      );
-    }
-
-    // Italic *text*
-    if (part.startsWith('*') && part.endsWith('*') && part.length > 2) {
-      return (
-        <em key={index} className="italic text-surface-700">
-          {part.slice(1, -1)}
-        </em>
-      );
-    }
-
-    // Strikethrough ~~text~~
-    if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) {
-      return (
-        <del key={index} className="line-through text-surface-400">
-          {part.slice(2, -2)}
-        </del>
-      );
-    }
-
-    // Link [text](url)
-    const linkMatch = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
-    if (linkMatch) {
-      const url = linkMatch[2];
-      const isAuction = url.startsWith('/auction/') || url.includes('/auction/');
-      const isInternal = url.startsWith('/') || url.startsWith('#');
-      return (
-        <a
-          key={index}
-          href={url}
-          target={isInternal ? undefined : '_blank'}
-          rel={isInternal ? undefined : 'noopener noreferrer'}
-          className={
-            isAuction
-              ? 'inline-flex items-center gap-1 font-bold text-purple-700 bg-purple-100 hover:bg-purple-200 px-2 py-0.5 rounded-lg transition-colors no-underline text-xs my-0.5 border border-purple-200'
-              : 'text-purple-600 hover:text-purple-700 underline underline-offset-2 font-medium'
-          }
-        >
-          {isAuction && <span aria-hidden="true">🏷️</span>}
-          {linkMatch[1]}
-        </a>
       );
     }
 

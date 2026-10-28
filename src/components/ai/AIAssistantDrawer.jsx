@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Bot,
   X,
@@ -18,6 +19,7 @@ import { supabase } from '../../lib/supabaseClient';
 import { SAMPLE_AUCTIONS } from '../../lib/constants';
 
 export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] }) {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -25,6 +27,13 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
   const [errorMsg, setErrorMsg] = useState('');
   const [activeListings, setActiveListings] = useState([]);
   const messagesEndRef = useRef(null);
+
+  const handleProductNavigation = (url) => {
+    if (onClose) onClose();
+    if (url) {
+      navigate(url);
+    }
+  };
 
   const dealAnalysis = calculateDealScore(auction);
   const isGroqActive = hasGroqApiKey();
@@ -578,7 +587,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
                 {m.sender === 'user' ? (
                   <div className="whitespace-pre-line">{m.text}</div>
                 ) : (
-                  <MarkdownRenderer content={m.text} />
+                  <MarkdownRenderer content={m.text} onLinkClick={handleProductNavigation} />
                 )}
 
                 {/* Footnote */}
