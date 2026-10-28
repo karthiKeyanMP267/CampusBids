@@ -1,15 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import {
-  Sparkles,
   Bot,
   X,
   Send,
   Loader2,
   ShieldCheck,
-  Settings2,
-  Key,
-  Check,
-  Zap,
   Cpu,
   AlertCircle,
 } from 'lucide-react';
@@ -18,11 +13,6 @@ import { calculateDealScore } from '../../lib/dealScore';
 import MarkdownRenderer from '../common/MarkdownRenderer';
 import {
   askGroqAssistant,
-  getStoredGroqApiKey,
-  setStoredGroqApiKey,
-  getSelectedGroqModel,
-  setSelectedGroqModel,
-  GROQ_MODELS,
   hasGroqApiKey,
 } from '../../lib/groqClient';
 
@@ -30,27 +20,21 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [apiKeyInput, setApiKeyInput] = useState(getStoredGroqApiKey());
-  const [keySaved, setKeySaved] = useState(false);
-  const [selectedModel, setModel] = useState(getSelectedGroqModel());
   const [errorMsg, setErrorMsg] = useState('');
   const messagesEndRef = useRef(null);
 
   const dealAnalysis = calculateDealScore(auction);
-  const hasKey = hasGroqApiKey() || Boolean(apiKeyInput.trim());
+  const isGroqActive = hasGroqApiKey();
 
   // Initialize with helpful welcome message when opened
   useEffect(() => {
     if (isOpen && messages.length === 0 && auction) {
-      const isGroqActive = hasGroqApiKey();
       setMessages([
         {
           id: 'welcome',
           sender: 'assistant',
-          text: `Hello! I'm your **CampusBid AI Assistant**${isGroqActive ? ' powered by **Groq Cloud AI**' : ''}. I can inspect "${auction.title}", uncover item risks, summarize the bidding dynamics, or generate a customized pre-inspection checklist for campus handover.`,
+          text: `Hello! I'm your **CampusBid AI Assistant**. I can inspect "${auction.title}", uncover item risks, summarize the bidding dynamics, or generate a customized pre-inspection checklist for campus handover.`,
           isFallback: !isGroqActive,
-          modelName: isGroqActive ? selectedModel : 'Rule-Based Analyzer',
           suggestions: [
             'What should I inspect before buying this item?',
             'What risks should I consider before bidding?',
@@ -60,28 +44,13 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
         },
       ]);
     }
-  }, [isOpen, auction, selectedModel]);
+  }, [isOpen, auction, isGroqActive]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Handle saving API key in localStorage
-  function handleSaveKey(e) {
-    e.preventDefault();
-    setStoredGroqApiKey(apiKeyInput.trim());
-    setKeySaved(true);
-    setTimeout(() => setKeySaved(false), 2000);
-    setErrorMsg('');
-  }
-
-  // Handle model change
-  function handleModelChange(modelId) {
-    setModel(modelId);
-    setSelectedGroqModel(modelId);
-  }
-
-  // Deterministic local analyzer (used as immediate fallback if no Groq key is configured)
+  // Deterministic local analyzer (used as immediate fallback if AI service is offline)
   function analyzeAuctionLocally(query) {
     const q = query.toLowerCase();
 
@@ -97,7 +66,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
       return {
         text: `### Pre-Inspection Checklist for ${auction.title}\n` +
           `*Category: ${auction.category} • Stated Condition: ${auction.condition?.replace('_', ' ')}*\n\n` +
-          checks.map((c, i) => `- [ ] **${c.split(':')[0]}**: ${c.split(':')[1]}`).join('\n') +
+          checks.map((c) => `- [ ] **${c.split(':')[0]}**: ${c.split(':')[1]}`).join('\n') +
           `\n\n> **Safety Reminder:** Both parties must confirm handover at the pickup spot before the auction closes!`,
         isFallback: true,
       };
@@ -194,18 +163,14 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
     setErrorMsg('');
 
     try {
-      const activeKey = getStoredGroqApiKey() || apiKeyInput.trim();
-
-      if (activeKey) {
-        // Real AI call to Groq API with Llama 3
+      if (isGroqActive) {
+        // Direct call to Groq AI inference
         const groqResponse = await askGroqAssistant({
           query: text,
           conversationHistory: messages,
           auction,
           bids,
           dealScore: dealAnalysis,
-          apiKey: activeKey,
-          model: selectedModel,
         });
 
         setMessages((prev) => [
@@ -215,11 +180,10 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
             sender: 'assistant',
             text: groqResponse.text,
             isRealAI: true,
-            modelName: groqResponse.model,
           },
         ]);
       } else {
-        // Heuristic fallback if no Groq key configured
+        // Heuristic fallback if AI service key is absent
         await new Promise((res) => setTimeout(res, 300));
         const response = analyzeAuctionLocally(text);
 
@@ -230,24 +194,20 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
             sender: 'assistant',
             text: response.text,
             isFallback: true,
-            modelName: 'CampusBid Rule Analyzer',
           },
         ]);
       }
     } catch (err) {
       console.error('AI Assistant Error:', err);
-      setErrorMsg(err.message || 'Error connecting to Groq AI.');
-
-      // Provide local fallback answer on network error so student is never stranded
+      // Fallback gracefully to local analysis so user never sees a broken screen
       const fallback = analyzeAuctionLocally(text);
       setMessages((prev) => [
         ...prev,
         {
           id: `a-${Date.now()}`,
           sender: 'assistant',
-          text: `> ⚠️ **Groq API Notice:** ${err.message}\n\nFalling back to local heuristic analysis:\n\n${fallback.text}`,
+          text: fallback.text,
           isFallback: true,
-          modelName: 'Local Fallback',
         },
       ]);
     } finally {
@@ -260,7 +220,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-2xs animate-fade-in">
       <div className="relative flex h-full w-full max-w-md flex-col bg-white shadow-2xl border-l border-surface-200">
-        {/* Header */}
+        {/* Clean Header */}
         <div className="flex items-center justify-between border-b border-surface-150 p-4 bg-surface-50">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple-600 text-white shadow-xs">
@@ -269,133 +229,30 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
             <div>
               <div className="flex items-center gap-1.5">
                 <h3 className="text-sm font-bold text-surface-900">CampusBid AI Advisor</h3>
-                {hasKey ? (
+                {isGroqActive && (
                   <span className="flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-semibold px-2 py-0.5">
                     <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                    Groq AI Live
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-surface-200 text-surface-700 text-[10px] font-medium px-2 py-0.5">
-                    Heuristic Mode
+                    Live AI
                   </span>
                 )}
               </div>
-              <p className="text-[11px] text-surface-500 truncate max-w-[220px]">
+              <p className="text-[11px] text-surface-500 truncate max-w-[240px]">
                 {auction?.title}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setShowSettings(!showSettings)}
-              title="Configure Groq AI Key & Model"
-              className={cn(
-                'rounded-lg p-1.5 transition-colors',
-                showSettings || !hasKey
-                  ? 'bg-purple-100 text-purple-700'
-                  : 'text-surface-400 hover:bg-surface-100 hover:text-surface-700'
-              )}
-            >
-              <Settings2 className="h-4 w-4" />
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700 transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-surface-400 hover:bg-surface-100 hover:text-surface-700 transition-colors"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* Collapsible Groq Settings Panel */}
-        {showSettings && (
-          <div className="border-b border-purple-100 bg-purple-50/70 p-3.5 space-y-3 animate-fade-in text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-purple-900 flex items-center gap-1.5">
-                <Zap className="h-3.5 w-3.5 text-purple-600" />
-                Groq AI Configuration
-              </span>
-              <a
-                href="https://console.groq.com/keys"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[11px] text-purple-700 hover:underline font-medium"
-              >
-                Get Free API Key →
-              </a>
-            </div>
-
-            <form onSubmit={handleSaveKey} className="space-y-2">
-              <div>
-                <label className="block text-[11px] font-medium text-surface-700 mb-1">
-                  Groq API Key (stored locally in browser):
-                </label>
-                <div className="flex gap-1.5">
-                  <input
-                    type="password"
-                    placeholder="gsk_..."
-                    value={apiKeyInput}
-                    onChange={(e) => setApiKeyInput(e.target.value)}
-                    className="flex-1 rounded-lg border border-purple-200 bg-white px-2.5 py-1.5 text-xs text-surface-900 focus:outline-none focus:ring-1 focus:ring-purple-500 font-mono"
-                  />
-                  <button
-                    type="submit"
-                    className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-purple-700 transition-colors shadow-2xs shrink-0"
-                  >
-                    {keySaved ? <Check className="h-3.5 w-3.5" /> : 'Save'}
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-medium text-surface-700 mb-1">
-                  Active Model:
-                </label>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {GROQ_MODELS.map((m) => (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => handleModelChange(m.id)}
-                      className={cn(
-                        'flex flex-col items-start p-2 rounded-lg border text-left transition-all',
-                        selectedModel === m.id
-                          ? 'border-purple-600 bg-white shadow-2xs text-purple-900 font-medium'
-                          : 'border-purple-200/80 bg-white/60 hover:bg-white text-surface-700'
-                      )}
-                    >
-                      <span className="text-[11px] leading-tight">{m.name}</span>
-                      <span className="text-[9px] text-purple-600 font-semibold mt-0.5">{m.badge}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </form>
-          </div>
-        )}
-
-        {/* API Key prompt banner if not configured */}
-        {!hasKey && !showSettings && (
-          <div className="bg-amber-50 px-4 py-2 border-b border-amber-200/80 flex items-center justify-between text-[11px] text-amber-900">
-            <span className="flex items-center gap-1.5">
-              <Key className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-              Add Groq API key for live AI reasoning (GPT-OSS, Qwen, or Llama).
-            </span>
-            <button
-              type="button"
-              onClick={() => setShowSettings(true)}
-              className="font-bold underline text-amber-800 hover:text-amber-900 shrink-0"
-            >
-              Configure
-            </button>
-          </div>
-        )}
-
         {/* Guardrail & Grounding Banner */}
-        <div className="bg-purple-50/50 px-4 py-1.5 border-b border-purple-100 flex items-center gap-2 text-[11px] text-purple-900">
+        <div className="bg-purple-50/50 px-4 py-2 border-b border-purple-100 flex items-center gap-2 text-[11px] text-purple-900">
           <ShieldCheck className="h-3.5 w-3.5 text-purple-600 shrink-0" />
           <span>Grounded in listing facts, condition factors, and student safety rules.</span>
         </div>
@@ -424,12 +281,12 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
                   <MarkdownRenderer content={m.text} />
                 )}
 
-                {/* Model badge footnote */}
+                {/* Footnote */}
                 {m.sender === 'assistant' && (
                   <div className="mt-2.5 flex items-center justify-between pt-1.5 border-t border-surface-200/60 text-[10px] text-surface-400">
                     <span className="flex items-center gap-1">
                       <Cpu className="h-3 w-3 text-purple-500" />
-                      {m.isRealAI ? `Groq • ${m.modelName || 'Live AI'}` : 'Grounded Heuristic Analyzer'}
+                      CampusBid AI
                     </span>
                     {m.isRealAI && (
                       <span className="text-[9px] text-emerald-600 font-semibold bg-emerald-50 px-1.5 py-0.2 rounded">
@@ -461,9 +318,7 @@ export default function AIAssistantDrawer({ isOpen, onClose, auction, bids = [] 
           {loading && (
             <div className="flex items-center gap-2 text-xs text-surface-500 py-2 bg-surface-50 rounded-xl px-3 border border-surface-150 w-fit">
               <Loader2 className="h-4 w-4 animate-spin text-purple-600" />
-              <span>
-                {hasKey ? `Groq (${selectedModel}) is thinking…` : 'Analyzing listing signals…'}
-              </span>
+              <span>Analyzing listing signals…</span>
             </div>
           )}
 
