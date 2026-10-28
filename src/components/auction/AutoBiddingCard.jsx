@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Bot, IndianRupee, ShieldCheck, CheckCircle2, AlertCircle, Loader2, X, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { supabase } from '../../lib/supabaseClient';
@@ -13,6 +13,8 @@ export default function AutoBiddingCard({ auction, onUpdated }) {
   const [maxBudget, setMaxBudget] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [isPlacingAutoBid, setIsPlacingAutoBid] = useState(false);
+  const isAutoBiddingRef = useRef(false);
 
   const nextMinBid = auction.bid_count === 0
     ? auction.starting_price
@@ -74,6 +76,62 @@ export default function AutoBiddingCard({ auction, onUpdated }) {
     };
   }, [auction?.id, user?.id]);
 
+  // Active Realtime Counter-Bid Worker:
+  // Whenever the auction updates (e.g. competitor outbids or budget is updated),
+  // automatically fire the counter-bid within 120ms to take back the lead!
+  useEffect(() => {
+    if (!isAuthenticated || !user || !auction?.id || auction.status !== 'active') return;
+    if (auction.seller_id === user.id) return;
+    if (!autoBid || !autoBid.is_active) return;
+
+    // If user is already the leading bidder, nothing to do
+    if (auction.current_bidder_id === user.id) return;
+
+    // If budget cannot cover next minimum bid, ceiling is reached
+    if (autoBid.max_amount < nextMinBid) return;
+
+    // Prevent concurrent runs
+    if (isAutoBiddingRef.current) return;
+
+    const timer = setTimeout(async () => {
+      if (isAutoBiddingRef.current) return;
+      isAutoBiddingRef.current = true;
+      setIsPlacingAutoBid(true);
+      try {
+        const bidToPlace = Math.min(autoBid.max_amount, nextMinBid);
+        if (supabase) {
+          const { error: bidErr } = await supabase.rpc('place_bid', {
+            p_auction_id: auction.id,
+            p_bidder_id: user.id,
+            p_amount: bidToPlace,
+          });
+          if (!bidErr && onUpdated) {
+            onUpdated();
+          }
+        }
+      } catch (err) {
+        console.warn('Auto counter-bid execution note:', err);
+      } finally {
+        setIsPlacingAutoBid(false);
+        setTimeout(() => {
+          isAutoBiddingRef.current = false;
+        }, 300);
+      }
+    }, 120);
+
+    return () => clearTimeout(timer);
+  }, [
+    auction?.id,
+    auction?.current_bid,
+    auction?.current_bidder_id,
+    auction?.status,
+    autoBid?.is_active,
+    autoBid?.max_amount,
+    nextMinBid,
+    user?.id,
+    isAuthenticated,
+  ]);
+
   async function handleSetAutoBid(e) {
     e.preventDefault();
     setError('');
@@ -101,6 +159,22 @@ export default function AutoBiddingCard({ auction, onUpdated }) {
           setSuccess(`Auto-bidding enabled up to ${formatINR(budget)}!`);
           setEditing(false);
           await loadUserAutoBid();
+          // If not currently holding the lead, immediately place the bid to take the lead!
+          if (auction.current_bidder_id !== user.id && budget >= nextMinBid && auction.seller_id !== user.id) {
+            const bidToPlace = Math.min(budget, nextMinBid);
+            try {
+              setIsPlacingAutoBid(true);
+              await supabase.rpc('place_bid', {
+                p_auction_id: auction.id,
+                p_bidder_id: user.id,
+                p_amount: bidToPlace,
+              });
+            } catch (err) {
+              console.warn('Initial auto-bid placement note:', err);
+            } finally {
+              setIsPlacingAutoBid(false);
+            }
+          }
           if (onUpdated) onUpdated();
         }
       } else {
@@ -230,8 +304,9 @@ export default function AutoBiddingCard({ auction, onUpdated }) {
                     Budget Limit Reached
                   </span>
                 ) : (
-                  <span className="text-surface-700">
-                    Ready to Counter-bid
+                  <span className="text-purple-600 font-semibold flex items-center gap-1.5 justify-end">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Counter-bidding...
                   </span>
                 )}
               </p>
