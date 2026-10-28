@@ -3,16 +3,15 @@ import React from 'react';
 /**
  * Lightweight, zero-dependency Markdown renderer designed specifically
  * for AI chat responses and rich assistant commentary.
- * Handles headings, bold/italics, bullet lists, numbered lists, checklists,
- * blockquotes, code blocks, inline code, and links.
+ * Handles headings, bold/italics/strikethrough, bullet lists, numbered lists, checklists,
+ * tables, blockquotes, code blocks, inline code, and links.
  */
 export default function MarkdownRenderer({ content, className = '' }) {
   if (!content) return null;
 
-  // Split into blocks by double newlines or lines
   const lines = content.split('\n');
   const elements = [];
-  let currentList = null; // { type: 'ul' | 'ol', items: [] }
+  let currentList = null; // { type: 'ul' | 'ol' | 'checklist', items: [] }
   let inCodeBlock = false;
   let codeBlockContent = [];
   let codeBlockLang = '';
@@ -68,7 +67,6 @@ export default function MarkdownRenderer({ content, className = '' }) {
     // Code blocks ```
     if (trimmed.startsWith('```')) {
       if (inCodeBlock) {
-        // Close code block
         elements.push(
           <pre
             key={`code-${elements.length}`}
@@ -97,6 +95,77 @@ export default function MarkdownRenderer({ content, className = '' }) {
     if (!trimmed) {
       flushList();
       continue;
+    }
+
+    // Check if current line starts a Markdown Table
+    if (trimmed.includes('|')) {
+      const nextLine = (lines[i + 1] || '').trim();
+      // Delimiter row matches patterns like |---|---| or |:---|:---:|---:| or ---|---
+      const isTableSeparator =
+        nextLine.includes('|') &&
+        nextLine.split('|').filter((s) => s.trim().length > 0).every((s) => /^:?-+:?$/.test(s.trim()));
+
+      if (isTableSeparator) {
+        flushList();
+        const rawHeaders = splitTableRow(trimmed);
+        const sepCols = splitTableRow(nextLine);
+        const alignments = sepCols.map((col) => {
+          const c = col.trim();
+          if (c.startsWith(':') && c.endsWith(':')) return 'text-center';
+          if (c.endsWith(':')) return 'text-right';
+          return 'text-left';
+        });
+
+        // Collect table rows
+        const tableRows = [];
+        i += 2; // skip header and delimiter lines
+        while (i < lines.length) {
+          const rowLine = lines[i].trim();
+          if (!rowLine || !rowLine.includes('|')) {
+            i--; // step back to allow outer loop to handle non-table line
+            break;
+          }
+          tableRows.push(splitTableRow(rowLine));
+          i++;
+        }
+
+        elements.push(
+          <div
+            key={`table-${elements.length}`}
+            className="my-2.5 overflow-x-auto rounded-xl border border-surface-200 bg-white shadow-2xs"
+          >
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-surface-50 border-b border-surface-200">
+                  {rawHeaders.map((header, hIdx) => (
+                    <th
+                      key={hIdx}
+                      className={`py-2 px-3 font-semibold text-surface-900 ${alignments[hIdx] || 'text-left'}`}
+                    >
+                      {renderInline(header)}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-150">
+                {tableRows.map((row, rIdx) => (
+                  <tr key={rIdx} className="hover:bg-purple-50/20 transition-colors">
+                    {row.map((cell, cIdx) => (
+                      <td
+                        key={cIdx}
+                        className={`py-2 px-3 text-surface-700 ${alignments[cIdx] || 'text-left'}`}
+                      >
+                        {renderInline(cell)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+        continue;
+      }
     }
 
     // Checklists: - [ ] or - [x]
@@ -197,13 +266,23 @@ export default function MarkdownRenderer({ content, className = '' }) {
 }
 
 /**
- * Parses inline markdown: **bold**, *italic*, `code`, [link](url)
+ * Splits a markdown table row by '|', stripping leading and trailing outer pipes
+ */
+function splitTableRow(line) {
+  let text = line.trim();
+  if (text.startsWith('|')) text = text.slice(1);
+  if (text.endsWith('|')) text = text.slice(0, -1);
+  return text.split('|').map((col) => col.trim());
+}
+
+/**
+ * Parses inline markdown: ***bold italic***, **bold**, *italic*, ~~strikethrough~~, `code`, [link](url)
  */
 function renderInline(text) {
   if (typeof text !== 'string') return text;
 
-  // Regex tokens: code, bold, italic, link
-  const tokenRegex = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\))/g;
+  // Regex tokens: code, bold+italic, bold, italic, strikethrough, link
+  const tokenRegex = /(`[^`]+`|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*]+\*|~~[^~]+~~|\[[^\]]+\]\([^)]+\))/g;
   const parts = text.split(tokenRegex);
 
   return parts.map((part, index) => {
@@ -218,6 +297,15 @@ function renderInline(text) {
         >
           {part.slice(1, -1)}
         </code>
+      );
+    }
+
+    // Bold + Italic ***text***
+    if (part.startsWith('***') && part.endsWith('***') && part.length > 6) {
+      return (
+        <strong key={index} className="font-semibold text-surface-900 italic">
+          {part.slice(3, -3)}
+        </strong>
       );
     }
 
@@ -236,6 +324,15 @@ function renderInline(text) {
         <em key={index} className="italic text-surface-700">
           {part.slice(1, -1)}
         </em>
+      );
+    }
+
+    // Strikethrough ~~text~~
+    if (part.startsWith('~~') && part.endsWith('~~') && part.length > 4) {
+      return (
+        <del key={index} className="line-through text-surface-400">
+          {part.slice(2, -2)}
+        </del>
       );
     }
 
