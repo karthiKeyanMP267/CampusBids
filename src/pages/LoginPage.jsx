@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { Gavel, Mail, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { Gavel, Mail, Lock, Eye, EyeOff, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export default function LoginPage() {
   const { signIn, isConfigured } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const isDeleted = new URLSearchParams(location.search).get('deleted') === 'true';
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -75,6 +76,15 @@ export default function LoginPage() {
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {isDeleted && (
+            <div className="mb-4 rounded-xl bg-emerald-50 border border-emerald-200 p-3 flex items-start gap-2">
+              <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-emerald-800">
+                Your account and all associated records have been permanently deleted.
+              </p>
             </div>
           )}
 

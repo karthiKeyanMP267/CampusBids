@@ -10,6 +10,7 @@ import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
 import MyListingsPage from './pages/MyListingsPage';
 import MyBidsPage from './pages/MyBidsPage';
+import ProfilePage from './pages/ProfilePage';
 import { ProtectedRoute, GuestRoute } from './components/common/ProtectedRoute';
 
 export default function App() {
@@ -44,6 +45,14 @@ export default function App() {
                 element={
                   <ProtectedRoute>
                     <MyBidsPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/profile"
+                element={
+                  <ProtectedRoute>
+                    <ProfilePage />
                   </ProtectedRoute>
                 }
               />

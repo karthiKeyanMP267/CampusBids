@@ -57,6 +57,11 @@
 ### 9. Secure Two-Party Handover
 - **Mutual Confirmation**: Protects funds until buyer and seller meet in a public campus location and mutually confirm item transfer.
 
+### 10. Student Profile & Account Management (`/profile`)
+- **Account Details Management**: Update display name, campus/institution, contact phone number, and custom avatar URL with real-time UI synchronization.
+- **Security & Password Management**: Change account password securely via Supabase Auth (`supabase.auth.updateUser`).
+- **Irrevocable Account Deletion (Danger Zone)**: Permanently delete your student account, profile, active listings, and bidding history with multi-step confirmation and cascading database wipe (`delete_own_account()`).
+
 ---
 
 ## 🛠️ Technology Stack
